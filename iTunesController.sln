@@ -1,0 +1,51 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 16
+VisualStudioVersion = 16.0.30011.22
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "iTunesController", "iTunesController\iTunesController.csproj", "{E74DB5A2-CA99-4D3C-B604-A9A978926E50}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "iTunesRatingsControl", "iTunesRatingsControl\iTunesRatingsControl.csproj", "{16FD4B1A-602C-4437-AE98-678CE864AFBC}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Invoker", "..\Libraries\Invoker\Invoker.csproj", "{92DDB858-829B-423F-991C-2BCF6D53A84F}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Debug|x86 = Debug|x86
+		Release|Any CPU = Release|Any CPU
+		Release|x86 = Release|x86
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{E74DB5A2-CA99-4D3C-B604-A9A978926E50}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{E74DB5A2-CA99-4D3C-B604-A9A978926E50}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{E74DB5A2-CA99-4D3C-B604-A9A978926E50}.Debug|x86.ActiveCfg = Debug|x86
+		{E74DB5A2-CA99-4D3C-B604-A9A978926E50}.Debug|x86.Build.0 = Debug|x86
+		{E74DB5A2-CA99-4D3C-B604-A9A978926E50}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{E74DB5A2-CA99-4D3C-B604-A9A978926E50}.Release|Any CPU.Build.0 = Release|Any CPU
+		{E74DB5A2-CA99-4D3C-B604-A9A978926E50}.Release|x86.ActiveCfg = Release|x86
+		{E74DB5A2-CA99-4D3C-B604-A9A978926E50}.Release|x86.Build.0 = Release|x86
+		{16FD4B1A-602C-4437-AE98-678CE864AFBC}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{16FD4B1A-602C-4437-AE98-678CE864AFBC}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{16FD4B1A-602C-4437-AE98-678CE864AFBC}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{16FD4B1A-602C-4437-AE98-678CE864AFBC}.Debug|x86.Build.0 = Debug|Any CPU
+		{16FD4B1A-602C-4437-AE98-678CE864AFBC}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{16FD4B1A-602C-4437-AE98-678CE864AFBC}.Release|Any CPU.Build.0 = Release|Any CPU
+		{16FD4B1A-602C-4437-AE98-678CE864AFBC}.Release|x86.ActiveCfg = Release|Any CPU
+		{16FD4B1A-602C-4437-AE98-678CE864AFBC}.Release|x86.Build.0 = Release|Any CPU
+		{92DDB858-829B-423F-991C-2BCF6D53A84F}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{92DDB858-829B-423F-991C-2BCF6D53A84F}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{92DDB858-829B-423F-991C-2BCF6D53A84F}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{92DDB858-829B-423F-991C-2BCF6D53A84F}.Debug|x86.Build.0 = Debug|Any CPU
+		{92DDB858-829B-423F-991C-2BCF6D53A84F}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{92DDB858-829B-423F-991C-2BCF6D53A84F}.Release|Any CPU.Build.0 = Release|Any CPU
+		{92DDB858-829B-423F-991C-2BCF6D53A84F}.Release|x86.ActiveCfg = Release|Any CPU
+		{92DDB858-829B-423F-991C-2BCF6D53A84F}.Release|x86.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {36A62E09-F0BA-43AB-9792-E2C540EF9924}
+	EndGlobalSection
+EndGlobal
