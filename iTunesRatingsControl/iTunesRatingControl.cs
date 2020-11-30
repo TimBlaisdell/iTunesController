@@ -2,16 +2,15 @@
 using System.Diagnostics;
 using System.Drawing;
 using System.IO;
+using System.Linq;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Windows.Forms;
+using iTunesControllerLib;
 using iTunesLib;
 
 namespace iTunesRatingsControl {
     public sealed partial class iTunesRatingControl : Form {
-        public iTunesRatingControl(string artfolder) : this() {
-            _artfolder = artfolder;
-        }
         public iTunesRatingControl() {
             InitializeComponent();
             Opacity = 0.6;
@@ -28,6 +27,13 @@ namespace iTunesRatingsControl {
             BackgroundImage = bmp;
             FindItunes();
         }
+        public iTunesRatingControl(string artfolder, string[] stringsToRemove, string hashFile) : this() {
+            _artfolder = artfolder;
+            _stringsToRemove = stringsToRemove;
+            _hashes = HashCollection.Load(hashFile);
+            _hashFile = hashFile;
+        }
+        private readonly HashCollection _hashes;
         private void iTunesRatingControl_MouseEnter(object sender, EventArgs e) {
             _mousePointing = true;
             Opacity = 1;
@@ -97,13 +103,18 @@ namespace iTunesRatingsControl {
                     SetWindowPos(Handle, nextwin.ToInt32(), 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
                 }
             }
-            if ((DateTime.Now - _lastTrackCheck).TotalSeconds > 2) {
+            if ((DateTime.Now - _lastTrackCheck).TotalSeconds > 1) {
                 _lastTrackCheck = DateTime.Now;
                 IITTrack track;
                 int rating = -1;
                 try {
                     track = _itunes.CurrentTrack;
-                    if (track != null) rating = track.Rating;
+                    if (track != null) {
+                        rating = track.Rating;
+                        if (_lastTrackName == track.Name && _lastTrackAlbum == track.Album) return;
+                        _lastTrackName = track.Name;
+                        _lastTrackAlbum = track.Album;
+                    }
                 }
                 catch {
                     try {
@@ -131,13 +142,12 @@ namespace iTunesRatingsControl {
                             }
                             if (string.IsNullOrEmpty(artist)) artist = string.IsNullOrEmpty(track.Artist) ? "artist" : track.Artist;
                             string album = string.IsNullOrEmpty(track.Album) ? "album" : track.Album;
-                            if (track.Artwork.Count == 1) {
-                                SaveArtworkFile(track.Artwork[1], artist + " - " + album);
+                            foreach (string s in _stringsToRemove) {
+                                int i = album.IndexOf(s, StringComparison.OrdinalIgnoreCase);
+                                if (i >= 0) album = album.Remove(i, s.Length).Trim();
                             }
-                            else {
-                                for (int i = 1; i <= track.Artwork.Count; ++i) {
-                                    SaveArtworkFile(track.Artwork[i], artist + " - " + album + "." + i);
-                                }
+                            if (track.Artwork.Count > 0) {
+                                SaveArtworkFile(track.Artwork[1], artist + " - " + album);
                             }
                         }
                     }
@@ -220,25 +230,57 @@ namespace iTunesRatingsControl {
                         break;
                     default: return;
                 }
-                name = name.Replace(':', '_').Replace('?', '_').Replace('\\', '_').Replace('/', '_').Replace('"', '_').Replace('*', '_').Replace('<', '_').Replace('>', '_');
+                name = name.NormalizeFilename();
                 string filepath = Path.Combine(_artfolder, name + ".");
-                if (!File.Exists(filepath + "jpg") && !File.Exists(filepath + "png") && !File.Exists(filepath + "bmp")) art.SaveArtworkToFile(filepath + ext);
+                // don't write a jpg if there's already a png, no matter how different they look to CompareImages.
+                if (!File.Exists(filepath + "jpg") && !File.Exists(filepath + "png") && !File.Exists(filepath + "bmp")) {
+                    art.SaveArtworkToFile(filepath + ext);
+                    int[] hash;
+                    using (Bitmap bmp = new Bitmap(filepath + ext)) {
+                        hash = bmp.GetHash(10);
+                    }
+                    bool found = false;
+                    foreach (var h in _hashes) {
+                        if (HashCollection.CompareHashes(hash, h.Hash) >= 97) {
+                            found = true;
+                            File.Delete(filepath + ext);
+                        }
+                    }
+                    if (!found) {
+                        _hashes.Add(new HashEntry {Filename = filepath + ext, Hash = hash});
+                        _hashes.Write(_hashFile);
+                    }
+                }
+                else {
+                    string fname = File.Exists(filepath + "jpg") ? filepath + "jpg" : File.Exists(filepath + "png") ? filepath + "png" : filepath + "bmp";
+                    int[] hash;
+                    using (Bitmap bmp = new Bitmap(fname)) {
+                        hash = bmp.GetHash(10);
+                    }
+                    if (!_hashes.Any(h => HashCollection.CompareHashes(h.Hash, hash) >= 97)) {
+                        _hashes.Add(new HashEntry {Filename = fname, Hash = hash});
+                        _hashes.Write(_hashFile);
+                    }
+                }
             }
-            catch {
-                // do nothing.
+            catch (Exception ex) {
+                if (!ex.Message.Contains("track has been deleted")) MessageBox.Show("Exception in iTunesRatingControl: " + ex.Message);
             }
         }
         [DllImport("user32.dll", EntryPoint = "SetWindowPos")]
         public static extern IntPtr SetWindowPos(IntPtr hWnd, int hWndInsertAfter, int x, int Y, int cx, int cy, int wFlags);
         [DllImport("user32.dll")] private static extern IntPtr GetWindow(IntPtr hWnd, uint uCmd);
         [DllImport("user32.dll")] private static extern bool GetWindowRect(IntPtr hWnd, ref Rectangle rect);
-        private string _artfolder;
+        private readonly string _artfolder;
         private Bitmap _bmp;
         //private Color _color = Color.Black;
         private readonly Point _defaultLocation;
+        private readonly string _hashFile;
         private iTunesAppClass _itunes;
         private IntPtr _iTunesWinHandle = IntPtr.Zero;
+        private string _lastTrackAlbum;
         private DateTime _lastTrackCheck = DateTime.Now.AddDays(-1);
+        private string _lastTrackName;
         private DateTime _lastWindowRefresh;
         private readonly object _lockobj = new object();
         private bool _mousePointing;
@@ -247,6 +289,11 @@ namespace iTunesRatingsControl {
         //private int _rgbChangeDir = 2;
         //private int _rgbChanging = 0;
         private int _stars;
+        /// <summary>
+        ///     Strings to remove from album names when createing album art file.  For example (Deluxe version), etc.  Not case
+        ///     sensitive.
+        /// </summary>
+        private readonly string[] _stringsToRemove;
         private const uint GW_HWNDNEXT = 2;
         private const uint GW_HWNDPREV = 3;
         const short SWP_NOMOVE = 0X2;

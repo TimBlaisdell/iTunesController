@@ -1,0 +1,14 @@
+﻿artfolder = C:\Users\blaisdell\Pictures\iTunesAlbumArt
+hashfile = C:\Users\blaisdell\Pictures\iTunesAlbumArtHashFile.txt
+REMOVE
+(deluxe version)
+(deluxe edition)
+(expanded edition)
+(original motion picture soundtrack)
+(bonus track version)
+(deluxe)
+(disc 1)
+(disc 2)
+(music from the motion picture)
+(super deluxe)
+END
