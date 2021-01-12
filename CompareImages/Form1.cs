@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Windows.Forms;
+using System.Windows.Forms.VisualStyles;
 using CompareImages.Properties;
 using iTunesControllerLib;
 
@@ -36,7 +37,7 @@ namespace CompareImages {
             listMatches.Items.Clear();
             lblFileCount.Text = "0";
             lblFileCount.Visible = true;
-            var files = Directory.GetFiles(txtImageFolder.Text, "*.*", SearchOption.AllDirectories);
+            var files = Directory.GetFiles(txtImageFolder.Text, "*.*", SearchOption.AllDirectories).Where(isImage).ToArray();
             progbar.Maximum = files.Length;
             progbar.Value = 0;
             progbar.Visible = true;
@@ -106,6 +107,10 @@ namespace CompareImages {
             base.OnClosing(e);
             _closed = true;
         }
+        private bool isImage(string file) {
+            string f = file.ToUpper();
+            return f.EndsWith(".JPG") || f.EndsWith(".BMP") || f.EndsWith(".PNG") || f.EndsWith(".JPEG") || f.EndsWith(".TIF") || f.EndsWith(".TIFF");
+        }
         private Bitmap LoadBitmap(string file) {
             Bitmap bmpreturn;
             using (var bmp = new Bitmap(file)) {
@@ -151,20 +156,62 @@ namespace CompareImages {
                                                lblFileCount.Text = c + (secondarycount >= 0 ? ": " + secondarycount : "");
                                            });
             }
-            var hashes = new HashCollection();
-            int i = 0;
-            foreach (var file in files) {
-                if (_closed || _stop) return;
-                using (Bitmap bmp = LoadBitmap(file)) {
-                    var hash = bmp.GetHash(_scaleSize);
-                    hashes.Add(new HashEntry {Filename = file, Hash = hash});
-                    UpdateProgBar(++i);
+            int counter = 0;
+            void UpdateProgBarCounter() {
+                ++counter;
+                if (counter % 10 == 0) {
+                    this.AsyncInvokeIfRequired(() => {
+                                                   progbar.Value = counter;
+                                                   lblFileCount.Text = counter.ToString();
+                                               });
                 }
+            }
+            int started = 0;
+            int finished = 0;
+            void LoadSomeFiles(object data) {
+                ++started;
+                var f = (string[]) ((object[])data)[0];
+                var start = (int) ((object[])data)[1];
+                var len = (int) ((object[])data)[2];
+                var hashcoll = (HashCollection) ((object[])data)[3];
+                for (int j = 0; j < len; ++j) {
+                    if (_closed || _stop) return;
+                    using (Bitmap bmp = LoadBitmap(f[j+start])) {
+                        var hash = bmp.GetHash(_scaleSize);
+                        lock (hashcoll) {
+                            hashcoll.Add(new HashEntry {Filename = f[j + start], Hash = hash});
+                        }
+                    }
+                    UpdateProgBarCounter();
+                    Thread.Sleep(0);
+                }
+                ++finished;
+            }
+            var hashes = new HashCollection();
+            for (int k = 0; k < files.Length; k += 50) {
+                new Thread(LoadSomeFiles).Start(new object[]{files, k, Math.Min(50, files.Length-k), hashes});
+            }
+            while (started == 0) {
+                if (_closed || _stop) return;
                 Thread.Sleep(0);
             }
+            while (started != finished) {
+                if (_closed || _stop) return;
+                Thread.Sleep(0);
+            }
+            //int i = 0;
+            //foreach (var file in files) {
+            //    if (_closed || _stop) return;
+            //    using (Bitmap bmp = LoadBitmap(file)) {
+            //        var hash = bmp.GetHash(_scaleSize);
+            //        hashes.Add(new HashEntry {Filename = file, Hash = hash});
+            //        UpdateProgBar(++i);
+            //    }
+            //    Thread.Sleep(0);
+            //}
             UpdateProgBar(0, hashes.Count);
             var minpct = (double) numMinPercent.Value - 0.0001;
-            for (i = 0; i < hashes.Count; ++i) {
+            for (int i = 0; i < hashes.Count; ++i) {
                 var hash1 = hashes[i];
                 for (int j = i + 1; j < hashes.Count; ++j) {
                     if (_closed || _stop) return;

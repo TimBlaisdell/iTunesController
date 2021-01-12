@@ -27,13 +27,37 @@ namespace iTunesRatingsControl {
             BackgroundImage = bmp;
             FindItunes();
         }
-        public iTunesRatingControl(string artfolder, string[] stringsToRemove, string hashFile) : this() {
+        public iTunesRatingControl(string artfolder, string[] stringsToRemove, string hashFile, string statsfile) : this() {
             _artfolder = artfolder;
             _stringsToRemove = stringsToRemove;
             _hashes = HashCollection.Load(hashFile);
             _hashFile = hashFile;
+            _statsfile = statsfile;
+            if (File.Exists(_statsfile)) {
+                var lines = File.ReadAllLines(_statsfile);
+                foreach (string line in lines) {
+                    var vals = line.Split('=');
+                    if (vals.Length != 2) continue;
+                    switch (vals[0].Trim().ToLower()) {
+                        case "1starcount":
+                            _ratingCounters[0] = int.Parse(vals[1]);
+                            break;
+                        case "2starcount":
+                            _ratingCounters[1] = int.Parse(vals[1]);
+                            break;
+                        case "3starcount":
+                            _ratingCounters[2] = int.Parse(vals[1]);
+                            break;
+                        case "4starcount":
+                            _ratingCounters[3] = int.Parse(vals[1]);
+                            break;
+                        case "5starcount":
+                            _ratingCounters[4] = int.Parse(vals[1]);
+                            break;
+                    }
+                }
+            }
         }
-        private readonly HashCollection _hashes;
         private void iTunesRatingControl_MouseEnter(object sender, EventArgs e) {
             _mousePointing = true;
             Opacity = 1;
@@ -106,7 +130,7 @@ namespace iTunesRatingsControl {
             if ((DateTime.Now - _lastTrackCheck).TotalSeconds > 1) {
                 _lastTrackCheck = DateTime.Now;
                 IITTrack track;
-                int rating = -1;
+                int rating;
                 try {
                     track = _itunes.CurrentTrack;
                     if (track != null) {
@@ -115,6 +139,7 @@ namespace iTunesRatingsControl {
                         _lastTrackName = track.Name;
                         _lastTrackAlbum = track.Album;
                     }
+                    else return;
                 }
                 catch {
                     try {
@@ -126,29 +151,33 @@ namespace iTunesRatingsControl {
                     return;
                 }
                 try {
-                    if (track != null && rating >= 0) {
-                        int newstars = (int) Math.Floor(rating / 20F);
-                        if (newstars != _stars) {
-                            _stars = newstars;
-                            Invalidate();
+                    // if we get here, we know a track is playing and it's different than the last one we saw.
+                    int stars = rating / 20;
+                    if (stars > 0) {
+                        ++_ratingCounters[stars - 1];
+                        WriteStatsFile();
+                    }
+                    int newstars = (int) Math.Floor(rating / 20F);
+                    if (newstars != _stars) {
+                        _stars = newstars;
+                        Invalidate();
+                    }
+                    if (_artfolder != null && track.Artwork.Count > 0) {
+                        string artist = null;
+                        try {
+                            if (track is IITFileOrCDTrack) artist = ((IITFileOrCDTrack) track).AlbumArtist;
                         }
-                        if (_artfolder != null && track.Artwork.Count > 0) {
-                            string artist = null;
-                            try {
-                                if (track is IITFileOrCDTrack) artist = ((IITFileOrCDTrack) track).AlbumArtist;
-                            }
-                            catch {
-                                artist = null;
-                            }
-                            if (string.IsNullOrEmpty(artist)) artist = string.IsNullOrEmpty(track.Artist) ? "artist" : track.Artist;
-                            string album = string.IsNullOrEmpty(track.Album) ? "album" : track.Album;
-                            foreach (string s in _stringsToRemove) {
-                                int i = album.IndexOf(s, StringComparison.OrdinalIgnoreCase);
-                                if (i >= 0) album = album.Remove(i, s.Length).Trim();
-                            }
-                            if (track.Artwork.Count > 0) {
-                                SaveArtworkFile(track.Artwork[1], artist + " - " + album);
-                            }
+                        catch {
+                            artist = null;
+                        }
+                        if (string.IsNullOrEmpty(artist)) artist = string.IsNullOrEmpty(track.Artist) ? "artist" : track.Artist;
+                        string album = string.IsNullOrEmpty(track.Album) ? "album" : track.Album;
+                        foreach (string s in _stringsToRemove) {
+                            int i = album.IndexOf(s, StringComparison.OrdinalIgnoreCase);
+                            if (i >= 0) album = album.Remove(i, s.Length).Trim();
+                        }
+                        if (track.Artwork.Count > 0) {
+                            SaveArtworkFile(track.Artwork[1], artist + " - " + album);
                         }
                     }
                 }
@@ -267,6 +296,21 @@ namespace iTunesRatingsControl {
                 if (!ex.Message.Contains("track has been deleted")) MessageBox.Show("Exception in iTunesRatingControl: " + ex.Message);
             }
         }
+        private void WriteStatsFile() {
+            if (string.IsNullOrEmpty(_statsfile)) return;
+            string text = $"1StarCount = {_ratingCounters[0]}{Environment.NewLine}" +
+                          $"2StarCount = {_ratingCounters[1]}{Environment.NewLine}" +
+                          $"3StarCount = {_ratingCounters[2]}{Environment.NewLine}" +
+                          $"4StarCount = {_ratingCounters[3]}{Environment.NewLine}" +
+                          $"5StarCount = {_ratingCounters[4]}{Environment.NewLine}";
+            float total = _ratingCounters.Sum();
+            text += $"1StarPct = {_ratingCounters[0] / total * 100}{Environment.NewLine}" +
+                    $"2StarPct = {_ratingCounters[1] / total * 100}{Environment.NewLine}" +
+                    $"3StarPct = {_ratingCounters[2] / total * 100}{Environment.NewLine}" +
+                    $"4StarPct = {_ratingCounters[3] / total * 100}{Environment.NewLine}" +
+                    $"5StarPct = {_ratingCounters[4] / total * 100}{Environment.NewLine}";
+            File.WriteAllText(_statsfile, text);
+        }
         [DllImport("user32.dll", EntryPoint = "SetWindowPos")]
         public static extern IntPtr SetWindowPos(IntPtr hWnd, int hWndInsertAfter, int x, int Y, int cx, int cy, int wFlags);
         [DllImport("user32.dll")] private static extern IntPtr GetWindow(IntPtr hWnd, uint uCmd);
@@ -275,6 +319,7 @@ namespace iTunesRatingsControl {
         private Bitmap _bmp;
         //private Color _color = Color.Black;
         private readonly Point _defaultLocation;
+        private readonly HashCollection _hashes;
         private readonly string _hashFile;
         private iTunesAppClass _itunes;
         private IntPtr _iTunesWinHandle = IntPtr.Zero;
@@ -285,10 +330,12 @@ namespace iTunesRatingsControl {
         private readonly object _lockobj = new object();
         private bool _mousePointing;
         private int _mouseStars = -1;
+        private readonly int[] _ratingCounters = new int[5];
         //private readonly Random _rand = new Random();
         //private int _rgbChangeDir = 2;
         //private int _rgbChanging = 0;
         private int _stars;
+        private readonly string _statsfile;
         /// <summary>
         ///     Strings to remove from album names when createing album art file.  For example (Deluxe version), etc.  Not case
         ///     sensitive.

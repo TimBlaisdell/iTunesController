@@ -14,6 +14,7 @@ namespace iTunesRatingsControl {
             Application.SetCompatibleTextRenderingDefault(false);
             string artfolder = null;
             string hashfile = null;
+            string statsfile = null;
             string[] linesToRemove = new string[0];
             var args = Environment.GetCommandLineArgs();
             foreach (var arg in args) {
@@ -29,6 +30,11 @@ namespace iTunesRatingsControl {
                     if (line != null) {
                         var fields = line.Split('=');
                         if (fields.Length > 1) hashfile = fields[1].Trim();
+                    }
+                    line = lines.FirstOrDefault(l => l.Trim().ToLower().StartsWith("statsfile"));
+                    if (line != null) {
+                        var fields = line.Split('=');
+                        if (fields.Length > 1) statsfile = fields[1].Trim();
                     }
                     int i = Array.FindIndex(lines, l => l.ToLower().Trim().StartsWith("stringstoremove"));
                     if (i >= 0) {
@@ -47,7 +53,7 @@ namespace iTunesRatingsControl {
             if (artfolder != null && !Directory.Exists(artfolder)) {
                 Directory.CreateDirectory(artfolder);
             }
-            Application.Run(new iTunesRatingControl(artfolder, linesToRemove, hashfile ?? "hashfile.txt"));
+            Application.Run(new iTunesRatingControl(artfolder, linesToRemove, hashfile ?? "hashfile.txt", statsfile));
         }
     }
 }
