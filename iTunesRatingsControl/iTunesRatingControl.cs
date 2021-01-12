@@ -8,7 +8,7 @@ using System.Threading;
 using System.Windows.Forms;
 using iTunesControllerLib;
 using iTunesLib;
-
+// test
 namespace iTunesRatingsControl {
     public sealed partial class iTunesRatingControl : Form {
         public iTunesRatingControl() {
