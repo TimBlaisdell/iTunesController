@@ -31,6 +31,8 @@
             this.contextMenuStrip = new System.Windows.Forms.ContextMenuStrip(this.components);
             this.menuExitITunesRatingControl = new System.Windows.Forms.ToolStripMenuItem();
             this.menuExitITunes = new System.Windows.Forms.ToolStripMenuItem();
+            this.menuFindMissingTracks = new System.Windows.Forms.ToolStripMenuItem();
+            this.toolStripSeparator1 = new System.Windows.Forms.ToolStripSeparator();
             this.contextMenuStrip.SuspendLayout();
             this.SuspendLayout();
             // 
@@ -41,10 +43,12 @@
             // contextMenuStrip
             // 
             this.contextMenuStrip.Items.AddRange(new System.Windows.Forms.ToolStripItem[] {
+            this.menuFindMissingTracks,
+            this.toolStripSeparator1,
             this.menuExitITunesRatingControl,
             this.menuExitITunes});
             this.contextMenuStrip.Name = "contextMenuStrip";
-            this.contextMenuStrip.Size = new System.Drawing.Size(205, 48);
+            this.contextMenuStrip.Size = new System.Drawing.Size(205, 98);
             // 
             // menuExitITunesRatingControl
             // 
@@ -59,6 +63,18 @@
             this.menuExitITunes.Size = new System.Drawing.Size(204, 22);
             this.menuExitITunes.Text = "Exit iTunes";
             this.menuExitITunes.Click += new System.EventHandler(this.menuExitITunes_Click);
+            // 
+            // menuFindMissingTracks
+            // 
+            this.menuFindMissingTracks.Name = "menuFindMissingTracks";
+            this.menuFindMissingTracks.Size = new System.Drawing.Size(204, 22);
+            this.menuFindMissingTracks.Text = "Find missing tracks";
+            this.menuFindMissingTracks.Click += new System.EventHandler(this.menuFindMissingTracks_Click);
+            // 
+            // toolStripSeparator1
+            // 
+            this.toolStripSeparator1.Name = "toolStripSeparator1";
+            this.toolStripSeparator1.Size = new System.Drawing.Size(201, 6);
             // 
             // iTunesRatingControl
             // 
@@ -88,6 +104,8 @@
         private System.Windows.Forms.ContextMenuStrip contextMenuStrip;
         private System.Windows.Forms.ToolStripMenuItem menuExitITunesRatingControl;
         private System.Windows.Forms.ToolStripMenuItem menuExitITunes;
+        private System.Windows.Forms.ToolStripMenuItem menuFindMissingTracks;
+        private System.Windows.Forms.ToolStripSeparator toolStripSeparator1;
     }
 }
 

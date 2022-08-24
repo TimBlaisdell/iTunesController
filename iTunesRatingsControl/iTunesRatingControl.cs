@@ -1,13 +1,16 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
+using System.Text;
 using System.Threading;
 using System.Windows.Forms;
 using iTunesControllerLib;
 using iTunesLib;
+
 // test
 namespace iTunesRatingsControl {
     public sealed partial class iTunesRatingControl : Form {
@@ -27,12 +30,13 @@ namespace iTunesRatingsControl {
             BackgroundImage = bmp;
             FindItunes();
         }
-        public iTunesRatingControl(string artfolder, string[] stringsToRemove, string hashFile, string statsfile) : this() {
+        public iTunesRatingControl(string artfolder, string[] stringsToRemove, string hashFile, string statsfile, string tracklistfile) : this() {
             _artfolder = artfolder;
             _stringsToRemove = stringsToRemove;
             _hashes = HashCollection.Load(hashFile);
             _hashFile = hashFile;
             _statsfile = statsfile;
+            _tracklistfile = tracklistfile;
             if (File.Exists(_statsfile)) {
                 var lines = File.ReadAllLines(_statsfile);
                 foreach (string line in lines) {
@@ -113,6 +117,25 @@ namespace iTunesRatingsControl {
             Close();
             Application.Exit();
         }
+        private void menuFindMissingTracks_Click(object sender, EventArgs e) {
+            if (string.IsNullOrEmpty(_tracklistfile)) {
+                MessageBox.Show("No track list file specified.");
+                return;
+            }
+            try {
+                var library = _itunes.LibraryPlaylist;
+                var tracks = library.Tracks;
+                new Thread(FindMissingTracksThread).Start(tracks);
+            }
+            catch {
+                try {
+                    NewITunesAppClass();
+                }
+                catch {
+                    // do nothing.
+                }
+            }
+        }
         private void timer_Tick(object sender, EventArgs e) {
             if ((DateTime.Now - _lastWindowRefresh).TotalSeconds > 5) {
                 _lastWindowRefresh = DateTime.Now;
@@ -157,7 +180,7 @@ namespace iTunesRatingsControl {
                         ++_ratingCounters[stars - 1];
                         WriteStatsFile();
                     }
-                    int newstars = (int) Math.Floor(rating / 20F);
+                    int newstars = (int)Math.Floor(rating / 20F);
                     if (newstars != _stars) {
                         _stars = newstars;
                         Invalidate();
@@ -165,7 +188,7 @@ namespace iTunesRatingsControl {
                     if (_artfolder != null && track.Artwork.Count > 0) {
                         string artist = null;
                         try {
-                            if (track is IITFileOrCDTrack) artist = ((IITFileOrCDTrack) track).AlbumArtist;
+                            if (track is IITFileOrCDTrack) artist = ((IITFileOrCDTrack)track).AlbumArtist;
                         }
                         catch {
                             artist = null;
@@ -199,6 +222,9 @@ namespace iTunesRatingsControl {
                     stars = new string('', _mouseStars);
                     gfx.DrawString(stars, Font, new SolidBrush(Color.Yellow), new Point(2, 2));
                 }
+                if (_trackListProcessing != null) {
+                    gfx.DrawString(_trackListProcessing[0] + "/" + _trackListProcessing[1], new Font(FontFamily.GenericSansSerif, 20), Brushes.Red, new RectangleF(0, 0, Width, Height));
+                }
             }
             e.Graphics.DrawImage(_bmp, 0, 0);
             //e.Graphics.DrawRectangle(Pens.Aqua, 0, 0, Width - 1, Height - 1);
@@ -231,6 +257,84 @@ namespace iTunesRatingsControl {
                 catch {
                     _iTunesWinHandle = IntPtr.Zero;
                 }
+            }
+        }
+        private void FindMissingTracksThread(object obj) {
+            _trackListProcessing = new int[] { 0, 0 };
+            var notFileKind = new List<IITTrack>();
+            var noFile = new List<IITTrack>();
+            var fileMissing = new List<IITTrack>();
+            try {
+                var tracks = (IITTrackCollection)obj;
+                _trackListProcessing[1] = tracks.Count;
+                for (int i = 0; i < tracks.Count; ++i) {
+                    _trackListProcessing[0] = i + 1;
+                    if (i % 10 == 0) Invalidate();
+                    var track = tracks[i + 1];
+                    string comment = track.Comment;
+                    if (!string.IsNullOrEmpty(comment)) {
+                        try {
+                            if (comment.Contains("FLAG: NOT FILE KIND")) track.Comment = comment = comment.Replace("FLAG: NOT FILE KIND", "").Trim();
+                            if (comment.Contains("FLAG: NO FILE")) track.Comment = comment = comment.Replace("FLAG: NO FILE", "").Trim();
+                            if (comment.Contains("FLAG: FILE MISSING")) track.Comment = comment = comment.Replace("FLAG: FILE MISSING", "").Trim();
+                        }
+                        catch {
+                            // don't do anything if I can't modify the comment.
+                        }
+                    }
+                    else comment = "";
+                    if (track.Kind != ITTrackKind.ITTrackKindFile) {
+                        notFileKind.Add(track);
+                        try {
+                            track.Comment = "FLAG: NOT FILE KIND " + comment;
+                        }
+                        catch {
+                            // don't do anything if I can't modify the comment.
+                        }
+                        continue;
+                    }
+                    var filetrack = (IITFileOrCDTrack)track;
+                    if (string.IsNullOrEmpty(filetrack.Location)) {
+                        noFile.Add(track);
+                        try {
+                            track.Comment = "FLAG: NO FILE " + comment;
+                        }
+                        catch {
+                            // don't do anything if I can't modify the comment.
+                        }
+                    }
+                    else if (!File.Exists(filetrack.Location)) {
+                        fileMissing.Add(track);
+                        try {
+                            track.Comment = "FLAG: FILE MISSING " + comment;
+                        }
+                        catch {
+                            // don't do anything if I can't modify the comment.
+                        }
+                    }
+                    //var path = track.Location;
+                }
+                var sb = new StringBuilder();
+                sb.Append("Not file kind: " + notFileKind.Count + Environment.NewLine);
+                foreach (var track in notFileKind) {
+                    sb.Append($"\"{track.Artist}\",\"{track.Album}\",\"{track.Name}\"{Environment.NewLine}");
+                }
+                sb.Append(Environment.NewLine + "File path empty: " + noFile.Count + Environment.NewLine);
+                foreach (var track in noFile) {
+                    sb.Append($"\"{track.Artist}\",\"{track.Album}\",\"{track.Name}\"{Environment.NewLine}");
+                }
+                sb.Append(Environment.NewLine + "File missing: " + fileMissing.Count + Environment.NewLine);
+                foreach (var track in fileMissing) {
+                    sb.Append($"\"{track.Artist}\",\"{track.Album}\",\"{track.Name}\"{Environment.NewLine}");
+                }
+                File.WriteAllText(_tracklistfile, sb.ToString());
+                MessageBox.Show("Track list written to: " + Environment.NewLine + _tracklistfile);
+            }
+            catch (Exception ex) {
+                MessageBox.Show("Exception thrown: " + ex.Message);
+            }
+            finally {
+                _trackListProcessing = null;
             }
         }
         private void NewITunesAppClass() {
@@ -276,7 +380,7 @@ namespace iTunesRatingsControl {
                         }
                     }
                     if (!found) {
-                        _hashes.Add(new HashEntry {Filename = filepath + ext, Hash = hash});
+                        _hashes.Add(new HashEntry { Filename = filepath + ext, Hash = hash });
                         _hashes.Write(_hashFile);
                     }
                 }
@@ -287,7 +391,7 @@ namespace iTunesRatingsControl {
                         hash = bmp.GetHash(10);
                     }
                     if (!_hashes.Any(h => HashCollection.CompareHashes(h.Hash, hash) >= 97)) {
-                        _hashes.Add(new HashEntry {Filename = fname, Hash = hash});
+                        _hashes.Add(new HashEntry { Filename = fname, Hash = hash });
                         _hashes.Write(_hashFile);
                     }
                 }
@@ -341,6 +445,8 @@ namespace iTunesRatingsControl {
         ///     sensitive.
         /// </summary>
         private readonly string[] _stringsToRemove;
+        private readonly string _tracklistfile;
+        private int[] _trackListProcessing;
         private const uint GW_HWNDNEXT = 2;
         private const uint GW_HWNDPREV = 3;
         const short SWP_NOMOVE = 0X2;
