@@ -1,32 +1,21 @@
-﻿using System.Diagnostics;
+using System.IO;
 using System.Runtime.InteropServices;
-using System.Text;
 using iTunesController;
 using iTunesControllerLib;
-using iTunesLib;
 
-// test
 namespace iTunesRatingsControl {
+    /// <summary>
+    ///     A transparent row of stars laid over Apple Music's MiniPlayer, showing the current track's rating. Hover to
+    ///     pick a rating and click to set it.
+    /// </summary>
     public sealed partial class iTunesRatingControl : Form {
-        public iTunesRatingControl() {
-            _artfolder = string.Empty;
-            _hashFile = string.Empty;
-            _statsfile = string.Empty;
-            _tracklistfile = string.Empty;
-            _hashes = new HashCollection();
-            _lastTrackAlbum = string.Empty;
-            _lastTrackName = string.Empty;
-            _stringsToRemove = Array.Empty<string>();
-            _trackListProcessing = Array.Empty<int>();
+        public iTunesRatingControl() : this(string.Empty) {
+        }
+        public iTunesRatingControl(string statsfile) {
+            _statsfile = statsfile;
             InitializeComponent();
             Opacity = 0.6;
-            _itunes = NewITunesAppClass();
-            if (Screen.PrimaryScreen == null) {
-                MessageBox.Show("No primary screen.");
-                return;
-            }
-            var rect = Screen.PrimaryScreen.Bounds;
-            foreach (var screen in Screen.AllScreens) rect = Rectangle.Union(rect, screen.Bounds);
+            var rect = Screen.AllScreens.Aggregate(Rectangle.Empty, (r, s) => r.IsEmpty ? s.Bounds : Rectangle.Union(r, s.Bounds));
             _defaultLocation = Location = new Point(rect.Left, rect.Top - Height);
             BackColor = Color.Black;
             TransparencyKey = Color.Black;
@@ -35,40 +24,17 @@ namespace iTunesRatingsControl {
                 gfx.FillRectangle(new SolidBrush(Color.Black), 0, 0, Width, Height);
             }
             BackgroundImage = bmp;
-            FindItunes();
+            ReadStatsFile();
         }
-        public iTunesRatingControl(string artfolder, string[] stringsToRemove, string hashFile, string statsfile, string tracklistfile) : this() {
-            _artfolder = artfolder;
-            _stringsToRemove = stringsToRemove;
-            _hashes = HashCollection.Load(hashFile);
-            _hashFile = hashFile;
-            _statsfile = statsfile;
-            _tracklistfile = tracklistfile;
-            if (File.Exists(_statsfile)) {
-                var lines = File.ReadAllLines(_statsfile);
-                foreach (string line in lines) {
-                    var vals = line.Split('=');
-                    if (vals.Length != 2) continue;
-                    switch (vals[0].Trim().ToLower()) {
-                        case "1starcount":
-                            _ratingCounters[0] = int.Parse(vals[1]);
-                            break;
-                        case "2starcount":
-                            _ratingCounters[1] = int.Parse(vals[1]);
-                            break;
-                        case "3starcount":
-                            _ratingCounters[2] = int.Parse(vals[1]);
-                            break;
-                        case "4starcount":
-                            _ratingCounters[3] = int.Parse(vals[1]);
-                            break;
-                        case "5starcount":
-                            _ratingCounters[4] = int.Parse(vals[1]);
-                            break;
-                    }
-                }
+        protected override CreateParams CreateParams {
+            get {
+                // Don't take focus when clicked, so setting a rating can hand focus back to whatever had it.
+                var cp = base.CreateParams;
+                cp.ExStyle |= WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW;
+                return cp;
             }
         }
+        protected override bool ShowWithoutActivation => true;
         private void iTunesRatingControl_MouseEnter(object sender, EventArgs e) {
             _mousePointing = true;
             Opacity = 1;
@@ -92,143 +58,43 @@ namespace iTunesRatingsControl {
             if (_mouseStars != oldstars) Invalidate();
         }
         private void iTunesRatingControl_MouseUp(object sender, MouseEventArgs e) {
-            if (!_mousePointing || e.Button != MouseButtons.Left) return;
-            IITTrack? track = null;
-            try {
-                track = _itunes.CurrentTrack;
-            }
-            catch {
-                try {
-                    _itunes = NewITunesAppClass();
-                }
-                catch {
-                    return;
-                }
-            }
-            if (track != null) {
-                track.Rating = _mouseStars * 20;
-                _stars = _mouseStars;
-                Invalidate();
-            }
+            if (!_mousePointing || e.Button != MouseButtons.Left || _track == null) return;
+            _pendingRating = _mouseStars;
+            _stars = _mouseStars;
+            Invalidate();
+            _wake.Release();
         }
         private void iTunesRatingControl_Shown(object sender, EventArgs e) {
             Location = _defaultLocation;
             timer.Start();
-        }
-        private void menuExitITunes_Click(object sender, EventArgs e) {
-            _itunes.Quit();
-            Close();
-            Application.Exit();
+            _worker = Task.Run(() => WorkerLoop(_cts.Token));
         }
         private void menuExitITunesRatingControl_Click(object sender, EventArgs e) {
             Close();
             Application.Exit();
         }
-        private void menuFindMissingTracks_Click(object sender, EventArgs e) {
-            if (string.IsNullOrEmpty(_tracklistfile)) {
-                MessageBox.Show("No track list file specified.");
+        protected override void OnFormClosing(FormClosingEventArgs e) {
+            _cts.Cancel();
+            base.OnFormClosing(e);
+        }
+        /// <summary>
+        ///     Keeps the stars on the MiniPlayer's album art, just above it in the z-order.
+        /// </summary>
+        private void timer_Tick(object sender, EventArgs e) {
+            var mini = AppleMusic.FindMiniPlayerWindow();
+            if (mini == IntPtr.Zero || IsIconic(mini) || DwmGetWindowAttribute(mini, DWMWA_EXTENDED_FRAME_BOUNDS, out AppleMusic.RECT frame, Marshal.SizeOf<AppleMusic.RECT>()) != 0) {
+                if (Location != _defaultLocation) Location = _defaultLocation;
                 return;
             }
-            try {
-                var library = _itunes.LibraryPlaylist;
-                var tracks = library.Tracks;
-                new Thread(FindMissingTracksThread).Start(tracks);
-            }
-            catch {
-                try {
-                    _itunes = NewITunesAppClass();
-                }
-                catch {
-                    // do nothing.
-                }
-            }
-        }
-        private void timer_Tick(object sender, EventArgs e) {
-            if ((DateTime.Now - _lastWindowRefresh).TotalSeconds > 5) {
-                _lastWindowRefresh = DateTime.Now;
-                new Thread(FindItunes).Start();
+            var location = new Point(frame.Left + OffsetFromCorner, frame.Top + OffsetFromCorner);
+            if (Location != location) Location = location;
+            if ((GetWindowLong(mini, GWL_EXSTYLE) & WS_EX_TOPMOST) != 0) {
+                SetWindowPos(Handle, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
             }
             else {
-                lock (_lockobj) {
-                    if (_iTunesWinHandle != IntPtr.Zero) {
-                        //GetWindowRect(_iTunesWinHandle, out RECT rect);
-                        //Location = new Point((int)rect.left, (int)rect.top);
-                        GetWindowRect(_iTunesWinHandle, out Rectangle rect);
-                        Location = new Point(rect.Left, rect.Top);
-                        var nextwin = GetWindow(_iTunesWinHandle, GW_HWNDPREV);
-                        int wid = rect.Right - 2 * rect.Left;
-                        int hgt = rect.Bottom - 2 * rect.Top;
-                        if (_lowerWindow == null) {
-                            //_lowerWindow = new LowerWindow { Location = new Point(rect.Left, rect.Top + wid), Size = new Size(wid, hgt - wid), iTunesWinHandle = _iTunesWinHandle };
-                            //_lowerWindow.Show();
-                        }
-                        //else {
-                        //    _lowerWindow.Location = new Point(rect.Left, rect.Top + wid);
-                        //    _lowerWindow.Size = new Size(wid, hgt - wid);
-                        //}
-                        SetWindowPos(Handle, nextwin.ToInt32(), 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
-                        //nextwin = GetWindow(_iTunesWinHandle, GW_HWNDPREV);
-                        //SetWindowPos(_lowerWindow.Handle, nextwin.ToInt32(), 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
-                    }
-                }
-            }
-            if ((DateTime.Now - _lastTrackCheck).TotalSeconds > 1) {
-                _lastTrackCheck = DateTime.Now;
-                IITTrack track;
-                int rating;
-                try {
-                    track = _itunes.CurrentTrack;
-                    if (track != null) {
-                        rating = track.Rating;
-                        if (_lastTrackName == track.Name && _lastTrackAlbum == track.Album) return;
-                        _lastTrackName = track.Name;
-                        _lastTrackAlbum = track.Album;
-                    }
-                    else return;
-                }
-                catch {
-                    try {
-                        _itunes = NewITunesAppClass();
-                    }
-                    catch {
-                        // do nothing.
-                    }
-                    return;
-                }
-                try {
-                    // if we get here, we know a track is playing and it's different than the last one we saw.
-                    int stars = rating / 20;
-                    if (stars > 0) {
-                        ++_ratingCounters[stars - 1];
-                        WriteStatsFile();
-                    }
-                    int newstars = (int)Math.Floor(rating / 20F);
-                    if (newstars != _stars) {
-                        _stars = newstars;
-                        Invalidate();
-                    }
-                    if (!string.IsNullOrEmpty(_artfolder) && track.Artwork.Count > 0) {
-                        string artist = string.Empty;
-                        try {
-                            if (track is IITFileOrCDTrack) artist = ((IITFileOrCDTrack)track).AlbumArtist;
-                        }
-                        catch {
-                            artist = string.Empty;
-                        }
-                        if (string.IsNullOrEmpty(artist)) artist = string.IsNullOrEmpty(track.Artist) ? "artist" : track.Artist;
-                        string album = string.IsNullOrEmpty(track.Album) ? "album" : track.Album;
-                        foreach (string s in _stringsToRemove) {
-                            int i = album.IndexOf(s, StringComparison.OrdinalIgnoreCase);
-                            if (i >= 0) album = album.Remove(i, s.Length).Trim();
-                        }
-                        if (track.Artwork.Count > 0) {
-                            SaveArtworkFile(track.Artwork[1], artist + " - " + album);
-                        }
-                    }
-                }
-                catch (Exception ex) {
-                    // do nothing.
-                }
+                if ((GetWindowLong(Handle, GWL_EXSTYLE) & WS_EX_TOPMOST) != 0) SetWindowPos(Handle, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+                var above = GetWindow(mini, GW_HWNDPREV);
+                if (above != Handle) SetWindowPos(Handle, above == IntPtr.Zero ? HWND_TOP : above, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
             }
         }
         protected override void OnPaint(PaintEventArgs e) {
@@ -236,203 +102,82 @@ namespace iTunesRatingsControl {
             if (_bmp == null) _bmp = new Bitmap(Width, Height);
             using (var gfx = Graphics.FromImage(_bmp)) {
                 gfx.FillRectangle(_mousePointing ? new SolidBrush(Color.FromArgb(90, 90, 90)) : Brushes.Black, 0, 0, Width, Height);
-                //gfx.DrawString("", Font, new SolidBrush(Color.FromArgb(100, 11, 11, 11)), new Point(0, 0));
-                string stars = new string('', _stars);
-                gfx.DrawString(stars, Font, new SolidBrush(Color.FromArgb(11, 11, 11)), new Point(0, 0));
-                gfx.DrawString(stars, Font, new SolidBrush(Color.White), new Point(2, 2));
-                if (_mousePointing) {
-                    stars = new string('', _mouseStars);
-                    gfx.DrawString(stars, Font, new SolidBrush(Color.Yellow), new Point(2, 2));
+                if (_stars > 0) {
+                    string stars = new string(StarGlyph, _stars);
+                    gfx.DrawString(stars, Font, new SolidBrush(Color.FromArgb(11, 11, 11)), new Point(0, 0));
+                    gfx.DrawString(stars, Font, new SolidBrush(Color.White), new Point(2, 2));
                 }
-                if (_trackListProcessing.Length != 0) {
-                    gfx.DrawString(_trackListProcessing[0] + "/" + _trackListProcessing[1], new Font(FontFamily.GenericSansSerif, 20), Brushes.Red, new RectangleF(0, 0, Width, Height));
+                if (_mousePointing) {
+                    string stars = new string(StarGlyph, _mouseStars);
+                    gfx.DrawString(stars, Font, new SolidBrush(Color.Yellow), new Point(2, 2));
                 }
             }
             e.Graphics.DrawImage(_bmp, 0, 0);
-            //e.Graphics.DrawRectangle(Pens.Aqua, 0, 0, Width - 1, Height - 1);
-            //e.Graphics.DrawString(lblStars.Text, lblStars.Font, new SolidBrush(Color.FromArgb(255 - _color.R, 255 - _color.G, 255 - _color.B)), lblStars.Location);
-            //e.Graphics.DrawString(lblStars.Text, lblStars.Font, new SolidBrush(_color), new Point(lblStars.Left + 1, lblStars.Top + 1));
         }
-        private void FindItunes() {
-            lock (_lockobj) {
+        private void ReadStatsFile() {
+            if (!File.Exists(_statsfile)) return;
+            foreach (string line in File.ReadAllLines(_statsfile)) {
+                var vals = line.Split('=');
+                if (vals.Length != 2) continue;
+                string key = vals[0].Trim().ToLower();
+                if (key.Length == 10 && key.EndsWith("starcount") && char.IsDigit(key[0]) && int.TryParse(vals[1], out int count)) {
+                    int stars = key[0] - '0';
+                    if (stars >= 1 && stars <= 5) _ratingCounters[stars - 1] = count;
+                }
+            }
+        }
+        private void ShowStars(int stars) {
+            this.AsyncInvokeIfRequired(() => {
+                                           if (_stars == stars) return;
+                                           _stars = stars;
+                                           Invalidate();
+                                       });
+        }
+        /// <summary>
+        ///     Watches Apple Music on a background thread: notices track changes, reads the rating, and sets it when a star
+        ///     is clicked. UI Automation calls into another process can take a while, so none of this runs on the UI thread.
+        /// </summary>
+        private async Task WorkerLoop(CancellationToken ct) {
+            var music = new AppleMusic();
+            DateTime lastRead = DateTime.MinValue;
+            while (!ct.IsCancellationRequested) {
                 try {
-                    // Get the location and size of the iTunes window.
-                    var processes = Process.GetProcessesByName("iTunes");
-                    if (processes.Length == 0) {
-                        this.AsyncInvokeIfRequired(() => Location = _defaultLocation);
-                        _iTunesWinHandle = IntPtr.Zero;
-                        return;
+                    var track = await music.GetNowPlayingAsync();
+                    if (track == null) {
+                        _track = null;
+                        ShowStars(-1);
                     }
-                    var process = processes[0];
-                    var title = process.MainWindowTitle;
-                    if (title.ToUpper() != "MINIPLAYER") {
-                        this.AsyncInvokeIfRequired(() => Location = _defaultLocation);
-                        _iTunesWinHandle = IntPtr.Zero;
-                        return;
+                    else if (_pendingRating is int wanted && track.IsSameTrack(_track)) {
+                        _pendingRating = null;
+                        ShowStars(music.SetRating(track, wanted) ?? -1);
+                        lastRead = DateTime.Now;
                     }
-                    _iTunesWinHandle = process.MainWindowHandle;
-                    //GetWindowRect(_iTunesWinHandle, out RECT rect);
-                    //this.AsyncInvokeIfRequired(() => Location = new Point((int)rect.left, (int)rect.top));
-                    GetWindowRect(_iTunesWinHandle, out Rectangle rect);
-                    //int wid = rect.Right - 2 * rect.Left;
-                    //int hgt = rect.Bottom - 2 * rect.Top;
-                    this.AsyncInvokeIfRequired(() => {
-                                                   Location = new Point(rect.Left, rect.Top);
-                                                   //if (_lowerWindow != null) {
-                                                   //    _lowerWindow.iTunesWinHandle = _iTunesWinHandle;
-                                                   //    _lowerWindow.Location = new Point(rect.Left, rect.Top + wid);
-                                                   //    _lowerWindow.Size = new Size(wid, hgt - wid);
-                                                   //}
-                                                   //SetWindowPos(_lowerWindow.Handle, Handle.ToInt32(), 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
-                                               });
-                    _lastWindowRefresh = DateTime.Now;
-                }
-                catch {
-                    _iTunesWinHandle = IntPtr.Zero;
-                }
-            }
-        }
-        private void FindMissingTracksThread(object? obj) {
-            if (obj == null) return;
-            _trackListProcessing = new[] { 0, 0 };
-            var notFileKind = new List<IITTrack>();
-            var noFile = new List<IITTrack>();
-            var fileMissing = new List<IITTrack>();
-            try {
-                var tracks = (IITTrackCollection)obj;
-                _trackListProcessing[1] = tracks.Count;
-                for (int i = 0; i < tracks.Count; ++i) {
-                    _trackListProcessing[0] = i + 1;
-                    if (i % 10 == 0) Invalidate();
-                    var track = tracks[i + 1];
-                    string comment = track.Comment;
-                    if (!string.IsNullOrEmpty(comment)) {
-                        try {
-                            if (comment.Contains("FLAG: NOT FILE KIND")) track.Comment = comment = comment.Replace("FLAG: NOT FILE KIND", "").Trim();
-                            if (comment.Contains("FLAG: NO FILE")) track.Comment = comment = comment.Replace("FLAG: NO FILE", "").Trim();
-                            if (comment.Contains("FLAG: FILE MISSING")) track.Comment = comment = comment.Replace("FLAG: FILE MISSING", "").Trim();
-                        }
-                        catch {
-                            // don't do anything if I can't modify the comment.
+                    else if (!track.IsSameTrack(_track)) {
+                        _pendingRating = null;
+                        _track = track;
+                        int stars = music.ReadRating(track) ?? -1;
+                        ShowStars(stars);
+                        lastRead = DateTime.Now;
+                        if (stars > 0) {
+                            ++_ratingCounters[stars - 1];
+                            WriteStatsFile();
                         }
                     }
-                    else comment = "";
-                    if (track.Kind != ITTrackKind.ITTrackKindFile) {
-                        notFileKind.Add(track);
-                        try {
-                            track.Comment = "FLAG: NOT FILE KIND " + comment;
-                        }
-                        catch {
-                            // don't do anything if I can't modify the comment.
-                        }
-                        continue;
-                    }
-                    var filetrack = (IITFileOrCDTrack)track;
-                    if (string.IsNullOrEmpty(filetrack.Location)) {
-                        noFile.Add(track);
-                        try {
-                            track.Comment = "FLAG: NO FILE " + comment;
-                        }
-                        catch {
-                            // don't do anything if I can't modify the comment.
-                        }
-                    }
-                    else if (!File.Exists(filetrack.Location)) {
-                        fileMissing.Add(track);
-                        try {
-                            track.Comment = "FLAG: FILE MISSING " + comment;
-                        }
-                        catch {
-                            // don't do anything if I can't modify the comment.
-                        }
-                    }
-                    //var path = track.Location;
-                }
-                var sb = new StringBuilder();
-                sb.Append("Not file kind: " + notFileKind.Count + Environment.NewLine);
-                foreach (var track in notFileKind) {
-                    sb.Append($"\"{track.Artist}\",\"{track.Album}\",\"{track.Name}\"{Environment.NewLine}");
-                }
-                sb.Append(Environment.NewLine + "File path empty: " + noFile.Count + Environment.NewLine);
-                foreach (var track in noFile) {
-                    sb.Append($"\"{track.Artist}\",\"{track.Album}\",\"{track.Name}\"{Environment.NewLine}");
-                }
-                sb.Append(Environment.NewLine + "File missing: " + fileMissing.Count + Environment.NewLine);
-                foreach (var track in fileMissing) {
-                    sb.Append($"\"{track.Artist}\",\"{track.Album}\",\"{track.Name}\"{Environment.NewLine}");
-                }
-                File.WriteAllText(_tracklistfile, sb.ToString());
-                MessageBox.Show("Track list written to: " + Environment.NewLine + _tracklistfile);
-            }
-            catch (Exception ex) {
-                MessageBox.Show("Exception thrown: " + ex.Message);
-            }
-            finally {
-                _trackListProcessing = Array.Empty<int>();
-            }
-        }
-        private iTunesAppClass NewITunesAppClass() {
-            var itunes = new iTunesAppClass();
-            itunes.OnQuittingEvent += () => {
-                                          Close();
-                                          Application.Exit();
-                                      };
-            itunes.OnAboutToPromptUserToQuitEvent += () => {
-                                                         Close();
-                                                         Application.Exit();
-                                                     };
-            return itunes;
-        }
-        private void SaveArtworkFile(IITArtwork art, string name) {
-            try {
-                string ext;
-                switch (art.Format) {
-                    case ITArtworkFormat.ITArtworkFormatJPEG:
-                        ext = "jpg";
-                        break;
-                    case ITArtworkFormat.ITArtworkFormatPNG:
-                        ext = "png";
-                        break;
-                    case ITArtworkFormat.ITArtworkFormatBMP:
-                        ext = "bmp";
-                        break;
-                    default: return;
-                }
-                name = name.NormalizeFilename();
-                string filepath = Path.Combine(_artfolder, name + ".");
-                // don't write a jpg if there's already a png, no matter how different they look to CompareImages.
-                if (!File.Exists(filepath + "jpg") && !File.Exists(filepath + "png") && !File.Exists(filepath + "bmp")) {
-                    art.SaveArtworkToFile(filepath + ext);
-                    int[] hash;
-                    using (Bitmap bmp = new Bitmap(filepath + ext)) {
-                        hash = bmp.GetHash(10);
-                    }
-                    bool found = false;
-                    foreach (var h in _hashes) {
-                        if (HashCollection.CompareHashes(hash, h.Hash) >= 97) {
-                            found = true;
-                            File.Delete(filepath + ext);
-                        }
-                    }
-                    if (!found) {
-                        _hashes.Add(new HashEntry { Filename = filepath + ext, Hash = hash });
-                        _hashes.Write(_hashFile);
+                    else if ((DateTime.Now - lastRead).TotalSeconds >= RereadSeconds) {
+                        // Pick up changes made in Apple Music itself, or a row that's since come into the list.
+                        ShowStars(music.ReadRating(track) ?? -1);
+                        lastRead = DateTime.Now;
                     }
                 }
-                else {
-                    string fname = File.Exists(filepath + "jpg") ? filepath + "jpg" : File.Exists(filepath + "png") ? filepath + "png" : filepath + "bmp";
-                    int[] hash;
-                    using (Bitmap bmp = new Bitmap(fname)) {
-                        hash = bmp.GetHash(10);
-                    }
-                    if (!_hashes.Any(h => HashCollection.CompareHashes(h.Hash, hash) >= 97)) {
-                        _hashes.Add(new HashEntry { Filename = fname, Hash = hash });
-                        _hashes.Write(_hashFile);
-                    }
+                catch (Exception ex) when (!ct.IsCancellationRequested) {
+                    System.Diagnostics.Debug.WriteLine("iTunesRatingControl: " + ex);
                 }
-            }
-            catch (Exception ex) {
-                if (!ex.Message.Contains("track has been deleted")) MessageBox.Show("Exception in iTunesRatingControl: " + ex.Message);
+                try {
+                    await _wake.WaitAsync(PollMilliseconds, ct);
+                }
+                catch (OperationCanceledException) {
+                    break;
+                }
             }
         }
         private void WriteStatsFile() {
@@ -450,50 +195,44 @@ namespace iTunesRatingsControl {
                     $"5StarPct = {_ratingCounters[4] / total * 100}{Environment.NewLine}";
             File.WriteAllText(_statsfile, text);
         }
+        [DllImport("dwmapi.dll")] private static extern int DwmGetWindowAttribute(IntPtr hwnd, int attr, out AppleMusic.RECT rect, int size);
+        [DllImport("user32.dll")] public static extern IntPtr GetWindow(IntPtr hWnd, uint uCmd);
+        [DllImport("user32.dll")] private static extern int GetWindowLong(IntPtr hwnd, int index);
+        [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr hWnd, out Rectangle rect);
+        [DllImport("user32.dll")] private static extern bool IsIconic(IntPtr hwnd);
         [DllImport("user32.dll", EntryPoint = "SetWindowPos")]
         public static extern IntPtr SetWindowPos(IntPtr hWnd, int hWndInsertAfter, int x, int Y, int cx, int cy, int wFlags);
-        [DllImport("user32.dll")] public static extern IntPtr GetWindow(IntPtr hWnd, uint uCmd);
-        [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr hWnd, out Rectangle rect);
-        private readonly string _artfolder;
+        [DllImport("user32.dll")] private static extern bool SetWindowPos(IntPtr hwnd, IntPtr insertAfter, int x, int y, int cx, int cy, uint flags);
         private Bitmap? _bmp;
-        //private Color _color = Color.Black;
+        private readonly CancellationTokenSource _cts = new();
         private readonly Point _defaultLocation;
-        private readonly HashCollection _hashes;
-        private readonly string _hashFile;
-        private iTunesAppClass _itunes;
-        private IntPtr _iTunesWinHandle = IntPtr.Zero;
-        private string _lastTrackAlbum;
-        private DateTime _lastTrackCheck = DateTime.Now.AddDays(-1);
-        private string _lastTrackName;
-        private DateTime _lastWindowRefresh;
-        private readonly object _lockobj = new();
-        private LowerWindow? _lowerWindow = null;
         private bool _mousePointing;
         private int _mouseStars = -1;
+        private volatile object? _pendingRating;
         private readonly int[] _ratingCounters = new int[5];
-        //private readonly Random _rand = new Random();
-        //private int _rgbChangeDir = 2;
-        //private int _rgbChanging = 0;
-        private int _stars;
-        private readonly string _statsfile;
         /// <summary>
-        ///     Strings to remove from album names when createing album art file.  For example (Deluxe version), etc.  Not case
-        ///     sensitive.
+        ///     The current track's rating, or -1 if it isn't known (nothing playing, or its row isn't in the main window's list).
         /// </summary>
-        private readonly string[] _stringsToRemove;
-        private readonly string _tracklistfile;
-        private int[] _trackListProcessing;
-        private const uint GW_HWNDNEXT = 2;
+        private int _stars = -1;
+        private readonly string _statsfile;
+        private volatile NowPlaying? _track;
+        private readonly SemaphoreSlim _wake = new(0);
+        private Task? _worker;
+        private const int DWMWA_EXTENDED_FRAME_BOUNDS = 9;
+        private const int GWL_EXSTYLE = -20;
         private const uint GW_HWNDPREV = 3;
-        const short SWP_NOMOVE = 0X2;
-        const short SWP_NOSIZE = 1;
-        const short SWP_NOZORDER = 0X4;
-        const int SWP_SHOWWINDOW = 0x0040;
-        [StructLayout(LayoutKind.Sequential)] private struct RECT {
-            public long left;
-            public long top;
-            public long right;
-            public long bottom;
-        }
+        private static readonly IntPtr HWND_NOTOPMOST = new(-2);
+        private static readonly IntPtr HWND_TOP = IntPtr.Zero;
+        private static readonly IntPtr HWND_TOPMOST = new(-1);
+        private const int OffsetFromCorner = 8;
+        private const int PollMilliseconds = 500;
+        private const int RereadSeconds = 5;
+        private const char StarGlyph = ''; // a star in Wingdings
+        private const uint SWP_NOACTIVATE = 0x10;
+        private const uint SWP_NOMOVE = 2;
+        private const uint SWP_NOSIZE = 1;
+        private const int WS_EX_NOACTIVATE = 0x08000000;
+        private const int WS_EX_TOOLWINDOW = 0x80;
+        private const int WS_EX_TOPMOST = 0x8;
     }
 }

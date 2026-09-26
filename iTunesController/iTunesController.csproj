@@ -1,10 +1,13 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
-    <TargetFramework>net7.0-windows</TargetFramework>
+    <!-- The Windows SDK version is needed for the media controls API (Windows.Media.Control). -->
+    <TargetFramework>net9.0-windows10.0.19041.0</TargetFramework>
     <Nullable>enable</Nullable>
     <UseWindowsForms>true</UseWindowsForms>
+    <!-- For UI Automation (System.Windows.Automation), used to read and set ratings in Apple Music. -->
+    <UseWPF>true</UseWPF>
     <ImplicitUsings>enable</ImplicitUsings>
     <ApplicationIcon>iTunesLogo.ico</ApplicationIcon>
     <IsPublishable>False</IsPublishable>
@@ -16,12 +19,6 @@
 
   <ItemGroup>
     <ProjectReference Include="..\iTunesControllerLib\iTunesControllerLib.csproj" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <Reference Include="Interop.iTunesLib">
-      <HintPath>Interop.iTunesLib.dll</HintPath>
-    </Reference>
   </ItemGroup>
 
 </Project>

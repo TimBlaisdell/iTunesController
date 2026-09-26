@@ -27,10 +27,7 @@
             System.ComponentModel.ComponentResourceManager resources = new System.ComponentModel.ComponentResourceManager(typeof(iTunesRatingControl));
             timer = new System.Windows.Forms.Timer(components);
             contextMenuStrip = new ContextMenuStrip(components);
-            menuFindMissingTracks = new ToolStripMenuItem();
-            toolStripSeparator1 = new ToolStripSeparator();
             menuExitITunesRatingControl = new ToolStripMenuItem();
-            menuExitITunes = new ToolStripMenuItem();
             contextMenuStrip.SuspendLayout();
             SuspendLayout();
             // 
@@ -40,35 +37,16 @@
             // 
             // contextMenuStrip
             // 
-            contextMenuStrip.Items.AddRange(new ToolStripItem[] { menuFindMissingTracks, toolStripSeparator1, menuExitITunesRatingControl, menuExitITunes });
+            contextMenuStrip.Items.AddRange(new ToolStripItem[] { menuExitITunesRatingControl });
             contextMenuStrip.Name = "contextMenuStrip";
-            contextMenuStrip.Size = new Size(205, 76);
-            // 
-            // menuFindMissingTracks
-            // 
-            menuFindMissingTracks.Name = "menuFindMissingTracks";
-            menuFindMissingTracks.Size = new Size(204, 22);
-            menuFindMissingTracks.Text = "Find missing tracks";
-            menuFindMissingTracks.Click += menuFindMissingTracks_Click;
-            // 
-            // toolStripSeparator1
-            // 
-            toolStripSeparator1.Name = "toolStripSeparator1";
-            toolStripSeparator1.Size = new Size(201, 6);
+            contextMenuStrip.Size = new Size(205, 26);
             // 
             // menuExitITunesRatingControl
             // 
             menuExitITunesRatingControl.Name = "menuExitITunesRatingControl";
             menuExitITunesRatingControl.Size = new Size(204, 22);
-            menuExitITunesRatingControl.Text = "Exit iTunesRatingControl";
+            menuExitITunesRatingControl.Text = "Exit rating control";
             menuExitITunesRatingControl.Click += menuExitITunesRatingControl_Click;
-            // 
-            // menuExitITunes
-            // 
-            menuExitITunes.Name = "menuExitITunes";
-            menuExitITunes.Size = new Size(204, 22);
-            menuExitITunes.Text = "Exit iTunes";
-            menuExitITunes.Click += menuExitITunes_Click;
             // 
             // iTunesRatingControl
             // 
@@ -96,9 +74,6 @@
         private System.Windows.Forms.Timer timer;
         private ContextMenuStrip contextMenuStrip;
         private ToolStripMenuItem menuExitITunesRatingControl;
-        private ToolStripMenuItem menuExitITunes;
-        private ToolStripMenuItem menuFindMissingTracks;
-        private ToolStripSeparator toolStripSeparator1;
     }
 }
 

@@ -1,61 +1,28 @@
+using System.IO;
 using iTunesRatingsControl;
 
 namespace iTunesController {
     internal static class Program {
         /// <summary>
         ///     The main entry point for the application.
+        ///     Optional arguments: /statsfile=[path] or /config=[settings file with a "statsfile = [path]" line].
         /// </summary>
         [STAThread] static void Main() {
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
-            string artfolder = string.Empty;
-            string? hashfile = null;
             string statsfile = string.Empty;
-            string tracklistfile = string.Empty;
-            string[] linesToRemove = Array.Empty<string>();
-            var args = Environment.GetCommandLineArgs();
-            foreach (var arg in args) {
-                if (arg.StartsWith("/artfolder=")) artfolder = arg.Substring(11).Trim();
+            foreach (var arg in Environment.GetCommandLineArgs()) {
+                if (arg.StartsWith("/statsfile=")) statsfile = arg.Substring(11).Trim();
                 else if (arg.StartsWith("/config=") && File.Exists(arg.Substring(8).Trim())) {
                     var lines = File.ReadAllLines(arg.Substring(8).Trim());
-                    var line = lines.FirstOrDefault(l => l.Trim().ToLower().StartsWith("artfolder"));
-                    if (line != null) {
-                        var fields = line.Split('=');
-                        if (fields.Length > 1) artfolder = fields[1].Trim();
-                    }
-                    line = lines.FirstOrDefault(l => l.Trim().ToLower().StartsWith("hashfile"));
-                    if (line != null) {
-                        var fields = line.Split('=');
-                        if (fields.Length > 1) hashfile = fields[1].Trim();
-                    }
-                    line = lines.FirstOrDefault(l => l.Trim().ToLower().StartsWith("statsfile"));
+                    var line = lines.FirstOrDefault(l => l.Trim().ToLower().StartsWith("statsfile"));
                     if (line != null) {
                         var fields = line.Split('=');
                         if (fields.Length > 1) statsfile = fields[1].Trim();
                     }
-                    line = lines.FirstOrDefault(l => l.Trim().ToLower().StartsWith("tracklistfile"));
-                    if (line != null) {
-                        var fields = line.Split('=');
-                        if (fields.Length > 1) tracklistfile = fields[1].Trim();
-                    }
-                    int i = Array.FindIndex(lines, l => l.ToLower().Trim().StartsWith("stringstoremove"));
-                    if (i >= 0) {
-                        var list = new List<string>();
-                        ++i;
-                        while (i < lines.Length) {
-                            line = lines[i].Trim();
-                            if (line.ToLower() == "end") break;
-                            list.Add(line);
-                            ++i;
-                        }
-                        linesToRemove = list.ToArray();
-                    }
                 }
             }
-            if (!string.IsNullOrEmpty(artfolder) && !Directory.Exists(artfolder)) {
-                Directory.CreateDirectory(artfolder);
-            }
-            Application.Run(new iTunesRatingControl(artfolder, linesToRemove, hashfile ?? "hashfile.txt", statsfile, tracklistfile));
+            Application.Run(new iTunesRatingControl(statsfile));
         }
     }
 }
