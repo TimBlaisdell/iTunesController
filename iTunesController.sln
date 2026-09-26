@@ -1,51 +1,31 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
-# Visual Studio Version 16
-VisualStudioVersion = 16.0.30011.22
+# Visual Studio Version 17
+VisualStudioVersion = 17.6.33723.286
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "iTunesRatingsControl", "iTunesRatingsControl\iTunesRatingsControl.csproj", "{16FD4B1A-602C-4437-AE98-678CE864AFBC}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "iTunesController", "iTunesController\iTunesController.csproj", "{69B0D2F5-7494-49F1-AE41-4BB26EA34218}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CompareImages", "CompareImages\CompareImages.csproj", "{F1FAB06B-9020-403E-977A-B5A23067C0B7}"
-EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "iTunesControllerLib", "iTunesControllerLib\iTunesControllerLib.csproj", "{F8DAAA37-04FA-4E44-B1B4-EA6514FC92A3}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "iTunesControllerLib", "iTunesControllerLib\iTunesControllerLib.csproj", "{FE10A8EF-296C-41B5-AA6E-5542EE51A6C6}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
-		Debug|x86 = Debug|x86
 		Release|Any CPU = Release|Any CPU
-		Release|x86 = Release|x86
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
-		{16FD4B1A-602C-4437-AE98-678CE864AFBC}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{16FD4B1A-602C-4437-AE98-678CE864AFBC}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{16FD4B1A-602C-4437-AE98-678CE864AFBC}.Debug|x86.ActiveCfg = Debug|Any CPU
-		{16FD4B1A-602C-4437-AE98-678CE864AFBC}.Debug|x86.Build.0 = Debug|Any CPU
-		{16FD4B1A-602C-4437-AE98-678CE864AFBC}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{16FD4B1A-602C-4437-AE98-678CE864AFBC}.Release|Any CPU.Build.0 = Release|Any CPU
-		{16FD4B1A-602C-4437-AE98-678CE864AFBC}.Release|x86.ActiveCfg = Release|Any CPU
-		{16FD4B1A-602C-4437-AE98-678CE864AFBC}.Release|x86.Build.0 = Release|Any CPU
-		{F1FAB06B-9020-403E-977A-B5A23067C0B7}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{F1FAB06B-9020-403E-977A-B5A23067C0B7}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{F1FAB06B-9020-403E-977A-B5A23067C0B7}.Debug|x86.ActiveCfg = Debug|Any CPU
-		{F1FAB06B-9020-403E-977A-B5A23067C0B7}.Debug|x86.Build.0 = Debug|Any CPU
-		{F1FAB06B-9020-403E-977A-B5A23067C0B7}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{F1FAB06B-9020-403E-977A-B5A23067C0B7}.Release|Any CPU.Build.0 = Release|Any CPU
-		{F1FAB06B-9020-403E-977A-B5A23067C0B7}.Release|x86.ActiveCfg = Release|Any CPU
-		{F1FAB06B-9020-403E-977A-B5A23067C0B7}.Release|x86.Build.0 = Release|Any CPU
-		{F8DAAA37-04FA-4E44-B1B4-EA6514FC92A3}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{F8DAAA37-04FA-4E44-B1B4-EA6514FC92A3}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{F8DAAA37-04FA-4E44-B1B4-EA6514FC92A3}.Debug|x86.ActiveCfg = Debug|Any CPU
-		{F8DAAA37-04FA-4E44-B1B4-EA6514FC92A3}.Debug|x86.Build.0 = Debug|Any CPU
-		{F8DAAA37-04FA-4E44-B1B4-EA6514FC92A3}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{F8DAAA37-04FA-4E44-B1B4-EA6514FC92A3}.Release|Any CPU.Build.0 = Release|Any CPU
-		{F8DAAA37-04FA-4E44-B1B4-EA6514FC92A3}.Release|x86.ActiveCfg = Release|Any CPU
-		{F8DAAA37-04FA-4E44-B1B4-EA6514FC92A3}.Release|x86.Build.0 = Release|Any CPU
+		{69B0D2F5-7494-49F1-AE41-4BB26EA34218}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{69B0D2F5-7494-49F1-AE41-4BB26EA34218}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{69B0D2F5-7494-49F1-AE41-4BB26EA34218}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{69B0D2F5-7494-49F1-AE41-4BB26EA34218}.Release|Any CPU.Build.0 = Release|Any CPU
+		{FE10A8EF-296C-41B5-AA6E-5542EE51A6C6}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{FE10A8EF-296C-41B5-AA6E-5542EE51A6C6}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{FE10A8EF-296C-41B5-AA6E-5542EE51A6C6}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{FE10A8EF-296C-41B5-AA6E-5542EE51A6C6}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
-		SolutionGuid = {36A62E09-F0BA-43AB-9792-E2C540EF9924}
+		SolutionGuid = {C4EA3EEA-D8CE-452D-BBEE-4B2882ABBDD9}
 	EndGlobalSection
 EndGlobal

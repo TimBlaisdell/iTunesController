@@ -1,6 +1,4 @@
-﻿using System.IO;
-
-namespace iTunesControllerLib {
+﻿namespace iTunesControllerLib {
     public class HashEntry {
         public string FilenameNoPath => Path.GetFileName(Filename);
         public string Filename;

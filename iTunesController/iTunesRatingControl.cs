@@ -1,13 +1,7 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Diagnostics;
-using System.Drawing;
-using System.IO;
-using System.Linq;
+﻿using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text;
-using System.Threading;
-using System.Windows.Forms;
+using iTunesController;
 using iTunesControllerLib;
 using iTunesLib;
 
@@ -15,9 +9,22 @@ using iTunesLib;
 namespace iTunesRatingsControl {
     public sealed partial class iTunesRatingControl : Form {
         public iTunesRatingControl() {
+            _artfolder = string.Empty;
+            _hashFile = string.Empty;
+            _statsfile = string.Empty;
+            _tracklistfile = string.Empty;
+            _hashes = new HashCollection();
+            _lastTrackAlbum = string.Empty;
+            _lastTrackName = string.Empty;
+            _stringsToRemove = Array.Empty<string>();
+            _trackListProcessing = Array.Empty<int>();
             InitializeComponent();
             Opacity = 0.6;
-            NewITunesAppClass();
+            _itunes = NewITunesAppClass();
+            if (Screen.PrimaryScreen == null) {
+                MessageBox.Show("No primary screen.");
+                return;
+            }
             var rect = Screen.PrimaryScreen.Bounds;
             foreach (var screen in Screen.AllScreens) rect = Rectangle.Union(rect, screen.Bounds);
             _defaultLocation = Location = new Point(rect.Left, rect.Top - Height);
@@ -86,13 +93,13 @@ namespace iTunesRatingsControl {
         }
         private void iTunesRatingControl_MouseUp(object sender, MouseEventArgs e) {
             if (!_mousePointing || e.Button != MouseButtons.Left) return;
-            IITTrack track = null;
+            IITTrack? track = null;
             try {
-                track = _itunes.CurrentTrack as IITTrack;
+                track = _itunes.CurrentTrack;
             }
             catch {
                 try {
-                    NewITunesAppClass();
+                    _itunes = NewITunesAppClass();
                 }
                 catch {
                     return;
@@ -129,7 +136,7 @@ namespace iTunesRatingsControl {
             }
             catch {
                 try {
-                    NewITunesAppClass();
+                    _itunes = NewITunesAppClass();
                 }
                 catch {
                     // do nothing.
@@ -143,11 +150,26 @@ namespace iTunesRatingsControl {
             }
             else {
                 lock (_lockobj) {
-                    var rect = new Rectangle();
-                    GetWindowRect(_iTunesWinHandle, ref rect);
-                    Location = rect.Location;
-                    var nextwin = GetWindow(_iTunesWinHandle, GW_HWNDPREV);
-                    SetWindowPos(Handle, nextwin.ToInt32(), 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
+                    if (_iTunesWinHandle != IntPtr.Zero) {
+                        //GetWindowRect(_iTunesWinHandle, out RECT rect);
+                        //Location = new Point((int)rect.left, (int)rect.top);
+                        GetWindowRect(_iTunesWinHandle, out Rectangle rect);
+                        Location = new Point(rect.Left, rect.Top);
+                        var nextwin = GetWindow(_iTunesWinHandle, GW_HWNDPREV);
+                        int wid = rect.Right - 2 * rect.Left;
+                        int hgt = rect.Bottom - 2 * rect.Top;
+                        if (_lowerWindow == null) {
+                            //_lowerWindow = new LowerWindow { Location = new Point(rect.Left, rect.Top + wid), Size = new Size(wid, hgt - wid), iTunesWinHandle = _iTunesWinHandle };
+                            //_lowerWindow.Show();
+                        }
+                        //else {
+                        //    _lowerWindow.Location = new Point(rect.Left, rect.Top + wid);
+                        //    _lowerWindow.Size = new Size(wid, hgt - wid);
+                        //}
+                        SetWindowPos(Handle, nextwin.ToInt32(), 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
+                        //nextwin = GetWindow(_iTunesWinHandle, GW_HWNDPREV);
+                        //SetWindowPos(_lowerWindow.Handle, nextwin.ToInt32(), 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
+                    }
                 }
             }
             if ((DateTime.Now - _lastTrackCheck).TotalSeconds > 1) {
@@ -166,7 +188,7 @@ namespace iTunesRatingsControl {
                 }
                 catch {
                     try {
-                        NewITunesAppClass();
+                        _itunes = NewITunesAppClass();
                     }
                     catch {
                         // do nothing.
@@ -185,13 +207,13 @@ namespace iTunesRatingsControl {
                         _stars = newstars;
                         Invalidate();
                     }
-                    if (_artfolder != null && track.Artwork.Count > 0) {
-                        string artist = null;
+                    if (!string.IsNullOrEmpty(_artfolder) && track.Artwork.Count > 0) {
+                        string artist = string.Empty;
                         try {
                             if (track is IITFileOrCDTrack) artist = ((IITFileOrCDTrack)track).AlbumArtist;
                         }
                         catch {
-                            artist = null;
+                            artist = string.Empty;
                         }
                         if (string.IsNullOrEmpty(artist)) artist = string.IsNullOrEmpty(track.Artist) ? "artist" : track.Artist;
                         string album = string.IsNullOrEmpty(track.Album) ? "album" : track.Album;
@@ -222,7 +244,7 @@ namespace iTunesRatingsControl {
                     stars = new string('', _mouseStars);
                     gfx.DrawString(stars, Font, new SolidBrush(Color.Yellow), new Point(2, 2));
                 }
-                if (_trackListProcessing != null) {
+                if (_trackListProcessing.Length != 0) {
                     gfx.DrawString(_trackListProcessing[0] + "/" + _trackListProcessing[1], new Font(FontFamily.GenericSansSerif, 20), Brushes.Red, new RectangleF(0, 0, Width, Height));
                 }
             }
@@ -249,9 +271,20 @@ namespace iTunesRatingsControl {
                         return;
                     }
                     _iTunesWinHandle = process.MainWindowHandle;
-                    var rect = new Rectangle();
-                    GetWindowRect(_iTunesWinHandle, ref rect);
-                    this.AsyncInvokeIfRequired(() => Location = rect.Location);
+                    //GetWindowRect(_iTunesWinHandle, out RECT rect);
+                    //this.AsyncInvokeIfRequired(() => Location = new Point((int)rect.left, (int)rect.top));
+                    GetWindowRect(_iTunesWinHandle, out Rectangle rect);
+                    //int wid = rect.Right - 2 * rect.Left;
+                    //int hgt = rect.Bottom - 2 * rect.Top;
+                    this.AsyncInvokeIfRequired(() => {
+                                                   Location = new Point(rect.Left, rect.Top);
+                                                   //if (_lowerWindow != null) {
+                                                   //    _lowerWindow.iTunesWinHandle = _iTunesWinHandle;
+                                                   //    _lowerWindow.Location = new Point(rect.Left, rect.Top + wid);
+                                                   //    _lowerWindow.Size = new Size(wid, hgt - wid);
+                                                   //}
+                                                   //SetWindowPos(_lowerWindow.Handle, Handle.ToInt32(), 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
+                                               });
                     _lastWindowRefresh = DateTime.Now;
                 }
                 catch {
@@ -259,8 +292,9 @@ namespace iTunesRatingsControl {
                 }
             }
         }
-        private void FindMissingTracksThread(object obj) {
-            _trackListProcessing = new int[] { 0, 0 };
+        private void FindMissingTracksThread(object? obj) {
+            if (obj == null) return;
+            _trackListProcessing = new[] { 0, 0 };
             var notFileKind = new List<IITTrack>();
             var noFile = new List<IITTrack>();
             var fileMissing = new List<IITTrack>();
@@ -334,19 +368,20 @@ namespace iTunesRatingsControl {
                 MessageBox.Show("Exception thrown: " + ex.Message);
             }
             finally {
-                _trackListProcessing = null;
+                _trackListProcessing = Array.Empty<int>();
             }
         }
-        private void NewITunesAppClass() {
-            _itunes = new iTunesAppClass();
-            _itunes.OnQuittingEvent += () => {
-                                           Close();
-                                           Application.Exit();
-                                       };
-            _itunes.OnAboutToPromptUserToQuitEvent += () => {
-                                                          Close();
-                                                          Application.Exit();
-                                                      };
+        private iTunesAppClass NewITunesAppClass() {
+            var itunes = new iTunesAppClass();
+            itunes.OnQuittingEvent += () => {
+                                          Close();
+                                          Application.Exit();
+                                      };
+            itunes.OnAboutToPromptUserToQuitEvent += () => {
+                                                         Close();
+                                                         Application.Exit();
+                                                     };
+            return itunes;
         }
         private void SaveArtworkFile(IITArtwork art, string name) {
             try {
@@ -417,10 +452,10 @@ namespace iTunesRatingsControl {
         }
         [DllImport("user32.dll", EntryPoint = "SetWindowPos")]
         public static extern IntPtr SetWindowPos(IntPtr hWnd, int hWndInsertAfter, int x, int Y, int cx, int cy, int wFlags);
-        [DllImport("user32.dll")] private static extern IntPtr GetWindow(IntPtr hWnd, uint uCmd);
-        [DllImport("user32.dll")] private static extern bool GetWindowRect(IntPtr hWnd, ref Rectangle rect);
+        [DllImport("user32.dll")] public static extern IntPtr GetWindow(IntPtr hWnd, uint uCmd);
+        [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr hWnd, out Rectangle rect);
         private readonly string _artfolder;
-        private Bitmap _bmp;
+        private Bitmap? _bmp;
         //private Color _color = Color.Black;
         private readonly Point _defaultLocation;
         private readonly HashCollection _hashes;
@@ -431,7 +466,8 @@ namespace iTunesRatingsControl {
         private DateTime _lastTrackCheck = DateTime.Now.AddDays(-1);
         private string _lastTrackName;
         private DateTime _lastWindowRefresh;
-        private readonly object _lockobj = new object();
+        private readonly object _lockobj = new();
+        private LowerWindow? _lowerWindow = null;
         private bool _mousePointing;
         private int _mouseStars = -1;
         private readonly int[] _ratingCounters = new int[5];
@@ -453,5 +489,11 @@ namespace iTunesRatingsControl {
         const short SWP_NOSIZE = 1;
         const short SWP_NOZORDER = 0X4;
         const int SWP_SHOWWINDOW = 0x0040;
+        [StructLayout(LayoutKind.Sequential)] private struct RECT {
+            public long left;
+            public long top;
+            public long right;
+            public long bottom;
+        }
     }
 }

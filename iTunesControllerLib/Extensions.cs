@@ -1,9 +1,6 @@
-﻿using System;
-using System.ComponentModel;
-using System.Drawing;
+﻿using System.ComponentModel;
 using System.Drawing.Imaging;
 using System.Runtime.InteropServices;
-using System.Windows.Forms;
 // ReSharper disable UnusedMember.Global
 
 namespace iTunesControllerLib {
@@ -11,7 +8,7 @@ namespace iTunesControllerLib {
         public static void AsyncInvokeIfRequired(this ISynchronizeInvoke obj, MethodInvoker action) {
             try {
                 if (obj.InvokeRequired) {
-                    var args = new object[0];
+                    var args = Array.Empty<object>();
                     obj.BeginInvoke(action, args);
                 }
                 else {
@@ -22,37 +19,35 @@ namespace iTunesControllerLib {
                 // do nothing.
             }
         }
-        public static int[] GetHash(this Bitmap bmp, int scalesize, string savefilename = null) {
-            int[] hash;
-            using (var bmpscaled = new Bitmap(scalesize, scalesize)) {
-                using (var gfx = Graphics.FromImage(bmpscaled)) {
-                    gfx.DrawImage(bmp, new Rectangle(0, 0, scalesize, scalesize), new Rectangle(0, 0, bmp.Width, bmp.Height), GraphicsUnit.Pixel);
-                }
-                if (savefilename != null) {
-                    bmpscaled.Save(savefilename + ".scaled.png");
-                }
-                //int[] aa = new int[scalesize * scalesize];
-                int[] ra = new int[scalesize * scalesize];
-                int[] ga = new int[scalesize * scalesize];
-                int[] ba = new int[scalesize * scalesize];
-                bmpscaled.IterateOver((x, y, a, r, g, b, index, itres) => {
-                                          //aa[index] = a;
-                                          ra[index] = r;
-                                          ga[index] = g;
-                                          ba[index] = b;
-                                      });
-                hash = new int[scalesize * scalesize * 3];
-                //Array.Copy(aa, 0, hash, 0, scalesize * scalesize);
-                Array.Copy(ra, 0, hash, 0, scalesize * scalesize);
-                Array.Copy(ga, 0, hash, scalesize * scalesize, scalesize * scalesize);
-                Array.Copy(ba, 0, hash, scalesize * scalesize * 2, scalesize * scalesize);
+        public static int[] GetHash(this Bitmap bmp, int scalesize, string? savefilename = null) {
+            using var bmpscaled = new Bitmap(scalesize, scalesize);
+            using (var gfx = Graphics.FromImage(bmpscaled)) {
+                gfx.DrawImage(bmp, new Rectangle(0, 0, scalesize, scalesize), new Rectangle(0, 0, bmp.Width, bmp.Height), GraphicsUnit.Pixel);
             }
+            if (savefilename != null) {
+                bmpscaled.Save(savefilename + ".scaled.png");
+            }
+            //int[] aa = new int[scalesize * scalesize];
+            int[] ra = new int[scalesize * scalesize];
+            int[] ga = new int[scalesize * scalesize];
+            int[] ba = new int[scalesize * scalesize];
+            bmpscaled.IterateOver((x, y, a, r, g, b, index, itres) => {
+                                      //aa[index] = a;
+                                      ra[index] = r;
+                                      ga[index] = g;
+                                      ba[index] = b;
+                                  });
+            var hash = new int[scalesize * scalesize * 3];
+            //Array.Copy(aa, 0, hash, 0, scalesize * scalesize);
+            Array.Copy(ra, 0, hash, 0, scalesize * scalesize);
+            Array.Copy(ga, 0, hash, scalesize * scalesize, scalesize * scalesize);
+            Array.Copy(ba, 0, hash, scalesize * scalesize * 2, scalesize * scalesize);
             return hash;
         }
         public static void InvokeIfRequired(this ISynchronizeInvoke obj, MethodInvoker action) {
             try {
                 if (obj.InvokeRequired) {
-                    var args = new object[0];
+                    var args = Array.Empty<object>();
                     obj.Invoke(action, args);
                 }
                 else {

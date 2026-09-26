@@ -1,8 +1,4 @@
-﻿using System;
-using System.Collections;
-using System.Collections.Generic;
-using System.IO;
-using System.Linq;
+﻿using System.Collections;
 
 namespace iTunesControllerLib {
     public class HashCollection : ICollection<HashEntry> {
@@ -15,7 +11,7 @@ namespace iTunesControllerLib {
         public void Clear() {
             _hashes.Clear();
         }
-        public bool Contains(HashEntry item) {
+        public bool Contains(HashEntry? item) {
             if (item == null) return false;
             foreach (var h in _hashes) {
                 if (string.Compare(h.Filename, item.Filename, StringComparison.OrdinalIgnoreCase) == 0) return true;
@@ -38,7 +34,7 @@ namespace iTunesControllerLib {
         public IEnumerator<HashEntry> GetEnumerator() {
             return _hashes.GetEnumerator();
         }
-        public bool Remove(HashEntry item) {
+        public bool Remove(HashEntry? item) {
             if (item == null) return false;
             foreach (var h in _hashes.ToArray()) {
                 if (string.Compare(h.Filename, item.Filename, StringComparison.OrdinalIgnoreCase) == 0) {
@@ -86,6 +82,6 @@ namespace iTunesControllerLib {
             }
             return hashes;
         }
-        private readonly List<HashEntry> _hashes = new List<HashEntry>();
+        private readonly List<HashEntry> _hashes = new();
     }
 }
