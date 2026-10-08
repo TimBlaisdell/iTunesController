@@ -35,6 +35,17 @@ namespace iTunesRatingsControl {
             }
         }
         protected override bool ShowWithoutActivation => true;
+        protected override void OnHandleCreated(EventArgs e) {
+            base.OnHandleCreated(e);
+            // Get told about keystrokes in any app (only that one happened, not which key), so the song list is only
+            // scrolled when the user isn't typing. See AppleMusic.ScrollToRow.
+            var device = new RAWINPUTDEVICE { usUsagePage = HID_USAGE_PAGE_GENERIC, usUsage = HID_USAGE_GENERIC_KEYBOARD, dwFlags = RIDEV_INPUTSINK, hwndTarget = Handle };
+            RegisterRawInputDevices(new[] { device }, 1, (uint)Marshal.SizeOf<RAWINPUTDEVICE>());
+        }
+        protected override void WndProc(ref Message m) {
+            if (m.Msg == WM_INPUT) AppleMusic.NoteKeyboardInput();
+            base.WndProc(ref m);
+        }
         private void iTunesRatingControl_MouseEnter(object sender, EventArgs e) {
             _mousePointing = true;
             Opacity = 1;
@@ -140,6 +151,8 @@ namespace iTunesRatingsControl {
         private async Task WorkerLoop(CancellationToken ct) {
             var music = new AppleMusic();
             DateTime lastRead = DateTime.MinValue;
+            int lastStars = -1;
+            bool counted = false;
             while (!ct.IsCancellationRequested) {
                 try {
                     var track = await music.GetNowPlayingAsync();
@@ -149,24 +162,28 @@ namespace iTunesRatingsControl {
                     }
                     else if (_pendingRating is int wanted && track.IsSameTrack(_track)) {
                         _pendingRating = null;
-                        ShowStars(music.SetRating(track, wanted) ?? -1);
+                        ShowStars(lastStars = music.SetRating(track, wanted) ?? -1);
                         lastRead = DateTime.Now;
                     }
                     else if (!track.IsSameTrack(_track)) {
+                        AppleMusic.Log($"Track changed: {track}");
                         _pendingRating = null;
                         _track = track;
-                        int stars = music.ReadRating(track) ?? -1;
-                        ShowStars(stars);
+                        counted = false;
+                        ShowStars(lastStars = music.ReadRating(track) ?? -1);
                         lastRead = DateTime.Now;
-                        if (stars > 0) {
-                            ++_ratingCounters[stars - 1];
-                            WriteStatsFile();
-                        }
                     }
-                    else if ((DateTime.Now - lastRead).TotalSeconds >= RereadSeconds) {
+                    else if ((DateTime.Now - lastRead).TotalSeconds >= (lastStars < 0 ? RetrySeconds : RereadSeconds)) {
                         // Pick up changes made in Apple Music itself, or a row that's since come into the list.
-                        ShowStars(music.ReadRating(track) ?? -1);
+                        // While the rating is unknown, retry often: the row may not have been found because the user was busy.
+                        ShowStars(lastStars = music.ReadRating(track) ?? -1);
                         lastRead = DateTime.Now;
+                    }
+                    if (!counted && lastStars > 0 && _track != null) {
+                        // Count each track once, whenever its rating first becomes known.
+                        counted = true;
+                        ++_ratingCounters[lastStars - 1];
+                        WriteStatsFile();
                     }
                 }
                 catch (Exception ex) when (!ct.IsCancellationRequested) {
@@ -200,6 +217,7 @@ namespace iTunesRatingsControl {
         [DllImport("user32.dll")] private static extern int GetWindowLong(IntPtr hwnd, int index);
         [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr hWnd, out Rectangle rect);
         [DllImport("user32.dll")] private static extern bool IsIconic(IntPtr hwnd);
+        [DllImport("user32.dll")] private static extern bool RegisterRawInputDevices(RAWINPUTDEVICE[] devices, uint count, uint size);
         [DllImport("user32.dll", EntryPoint = "SetWindowPos")]
         public static extern IntPtr SetWindowPos(IntPtr hWnd, int hWndInsertAfter, int x, int Y, int cx, int cy, int wFlags);
         [DllImport("user32.dll")] private static extern bool SetWindowPos(IntPtr hwnd, IntPtr insertAfter, int x, int y, int cx, int cy, uint flags);
@@ -220,6 +238,10 @@ namespace iTunesRatingsControl {
         private Task? _worker;
         private const int DWMWA_EXTENDED_FRAME_BOUNDS = 9;
         private const int GWL_EXSTYLE = -20;
+        private const ushort HID_USAGE_GENERIC_KEYBOARD = 6;
+        private const ushort HID_USAGE_PAGE_GENERIC = 1;
+        private const uint RIDEV_INPUTSINK = 0x100;
+        private const int WM_INPUT = 0xFF;
         private const uint GW_HWNDPREV = 3;
         private static readonly IntPtr HWND_NOTOPMOST = new(-2);
         private static readonly IntPtr HWND_TOP = IntPtr.Zero;
@@ -227,6 +249,7 @@ namespace iTunesRatingsControl {
         private const int OffsetFromCorner = 8;
         private const int PollMilliseconds = 500;
         private const int RereadSeconds = 5;
+        private const int RetrySeconds = 1;
         private const char StarGlyph = ''; // a star in Wingdings
         private const uint SWP_NOACTIVATE = 0x10;
         private const uint SWP_NOMOVE = 2;
@@ -234,5 +257,11 @@ namespace iTunesRatingsControl {
         private const int WS_EX_NOACTIVATE = 0x08000000;
         private const int WS_EX_TOOLWINDOW = 0x80;
         private const int WS_EX_TOPMOST = 0x8;
+        [StructLayout(LayoutKind.Sequential)] private struct RAWINPUTDEVICE {
+            public ushort usUsagePage;
+            public ushort usUsage;
+            public uint dwFlags;
+            public IntPtr hwndTarget;
+        }
     }
 }

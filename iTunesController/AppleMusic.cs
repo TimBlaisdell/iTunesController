@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Windows.Automation;
@@ -63,11 +64,12 @@ namespace iTunesController {
         /// </summary>
         public int? SetRating(NowPlaying track, int stars) {
             stars = Math.Clamp(stars, 0, 5);
-            var slider = FindRatingSlider(track);
+            var slider = FindRatingSlider(track, userInitiated: true);
             if (slider == null || _mainWindow == null) return null;
             var range = (RangeValuePattern)slider.GetCurrentPattern(RangeValuePattern.Pattern);
             int current = (int)Math.Round(range.Current.Value);
             if (current == stars) return current;
+            Log($"SetRating {current} -> {stars}: {track}");
             var hwnd = new IntPtr(_mainWindow.Current.NativeWindowHandle);
             var foreground = GetForegroundWindow();
             var placement = WINDOWPLACEMENT.Create();
@@ -136,34 +138,105 @@ namespace iTunesController {
             }, IntPtr.Zero);
             return found;
         }
-        private AutomationElement? FindRatingSlider(NowPlaying track) {
-            var row = FindRow(track);
+        private AutomationElement? FindRatingSlider(NowPlaying track, bool userInitiated = false) {
+            var row = FindRow(track, userInitiated);
             return row?.FindFirst(TreeScope.Descendants, new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Slider));
         }
         /// <summary>
         ///     Finds the track's row in the main window's song list. Rows scrolled out of view are only placeholders, so
         ///     this first checks the last row found and the rows that exist, then pages through the list.
         /// </summary>
-        private AutomationElement? FindRow(NowPlaying track) {
+        private AutomationElement? FindRow(NowPlaying track, bool userInitiated) {
             if (_lastRow != null && RowMatches(DescribeRow(_lastRow), track)) return _lastRow;
+            Log($"FindRow start: {track}");
             _lastRow = null;
             var list = FindSongList();
-            if (list == null) return null;
-            var row = FindRealizedRow(list, track);
-            if (row == null && list.TryGetCurrentPattern(ScrollPattern.Pattern, out object sp)) {
-                var scroll = (ScrollPattern)sp;
-                double view = scroll.Current.VerticalViewSize;
-                if (scroll.Current.VerticallyScrollable && view > 0) {
-                    double step = Math.Max(1, view * 0.9);
-                    for (double pct = 0; pct < 100 + step && row == null; pct += step) {
-                        scroll.SetScrollPercent(ScrollPattern.NoScroll, Math.Min(100, pct));
-                        row = FindRealizedRow(list, track);
-                    }
-                }
+            if (list == null) {
+                Log("FindRow: no song list");
+                return null;
             }
+            var row = FindRealizedRow(list, track);
+            if (row == null && list.TryGetCurrentPattern(ScrollPattern.Pattern, out object sp)) row = ScrollToRow(list, (ScrollPattern)sp, track, userInitiated);
+            Log($"FindRow end: {(row == null ? "not found" : "found")}");
             _lastRow = row;
             return row;
         }
+        /// <summary>
+        ///     Pages through the song list looking for the track's row. Scrolling the list makes Apple Music activate its
+        ///     main window (even when minimized), which would steal the keyboard from whatever the user is typing in. So
+        ///     this only runs once there's been no typing for a moment, gives up as soon as a key is pressed, and hands
+        ///     the foreground back after every step. An interrupted search resumes where it stopped on the next call for
+        ///     the same track. The exception is when the user clicked a star (userInitiated), since setting the rating
+        ///     activates Apple Music anyway. Returns null if it didn't find the row or gave up.
+        /// </summary>
+        private AutomationElement? ScrollToRow(AutomationElement list, ScrollPattern scroll, NowPlaying track, bool userInitiated) {
+            double view = scroll.Current.VerticalViewSize;
+            if (!scroll.Current.VerticallyScrollable || view <= 0) return null;
+            int lastKey = _lastKeyboardTick;
+            if (!userInitiated && Environment.TickCount - lastKey < IdleMillisecondsBeforeScrolling) {
+                Log("FindRow: user is typing; not scrolling yet");
+                return null;
+            }
+            if (!track.IsSameTrack(_scanTrack)) {
+                _scanTrack = track;
+                _scanResumePercent = 0;
+            }
+            // Scan from where the last attempt stopped to the bottom, then from the top back to there.
+            double step = Math.Max(1, view * 0.9);
+            double start = _scanResumePercent;
+            var stops = new List<double>();
+            for (double pct = start; pct < 100 + step; pct += step) stops.Add(Math.Min(100, pct));
+            for (double pct = 0; pct < start; pct += step) stops.Add(pct);
+            var foreground = GetForegroundWindow();
+            foreach (double pct in stops) {
+                if (!userInitiated && _lastKeyboardTick != lastKey) {
+                    Log($"FindRow: user typed; stopped scrolling at {pct:F1}%");
+                    _scanResumePercent = pct;
+                    return null;
+                }
+                Log($"FindRow: scroll to {pct:F1}%");
+                scroll.SetScrollPercent(ScrollPattern.NoScroll, pct);
+                if (foreground != IntPtr.Zero && GetForegroundWindow() != foreground) {
+                    Log("FindRow: Apple Music took the foreground; giving it back");
+                    RestoreForeground(foreground);
+                }
+                var row = FindRealizedRow(list, track);
+                if (row != null) {
+                    _scanTrack = null;
+                    return row;
+                }
+            }
+            _scanResumePercent = 0;
+            return null;
+        }
+        /// <summary>
+        ///     Called (from any thread) whenever a key is pressed anywhere, so scrolling can wait until the user stops typing.
+        /// </summary>
+        public static void NoteKeyboardInput() {
+            _lastKeyboardTick = Environment.TickCount;
+        }
+        /// <summary>
+        ///     Appends a timestamped line, along with the current foreground window, to LogFile (if set).
+        /// </summary>
+        public static void Log(string message) {
+            if (string.IsNullOrEmpty(LogFile)) return;
+            var fg = GetForegroundWindow();
+            var sb = new StringBuilder(256);
+            GetWindowText(fg, sb, sb.Capacity);
+            GetWindowThreadProcessId(fg, out uint pid);
+            string process = "?";
+            try {
+                process = Process.GetProcessById((int)pid).ProcessName;
+            }
+            catch {
+                // it's gone.
+            }
+            lock (LogLock) {
+                File.AppendAllText(LogFile, $"{DateTime.Now:HH:mm:ss.fff} {message}   [foreground: {process} '{sb}']{Environment.NewLine}");
+            }
+        }
+        public static string? LogFile;
+        private static readonly object LogLock = new();
         private static AutomationElement? FindRealizedRow(AutomationElement list, NowPlaying track) {
             var rows = list.FindAll(TreeScope.Children, new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.ListItem));
             foreach (AutomationElement row in rows) {
@@ -228,12 +301,22 @@ namespace iTunesController {
         [DllImport("user32.dll")] private static extern bool SetWindowPlacement(IntPtr hwnd, ref WINDOWPLACEMENT placement);
         [DllImport("user32.dll")] private static extern bool SetWindowPos(IntPtr hwnd, IntPtr insertAfter, int x, int y, int cx, int cy, uint flags);
         private delegate bool EnumWindowsProc(IntPtr hwnd, IntPtr lParam);
+        private static volatile int _lastKeyboardTick = Environment.TickCount - IdleMillisecondsBeforeScrolling;
         private AutomationElement? _lastRow;
         private AutomationElement? _mainWindow;
+        /// <summary>
+        ///     Where an interrupted scroll search for _scanTrack should pick up again.
+        /// </summary>
+        private double _scanResumePercent;
+        private NowPlaying? _scanTrack;
         private GlobalSystemMediaTransportControlsSessionManager? _sessionManager;
         private const string AppUserModelIdPrefix = "AppleInc.AppleMusic";
         private const string ArtistAlbumSeparator = " — ";
         private const int DWMWA_TRANSITIONS_FORCEDISABLED = 3;
+        /// <summary>
+        ///     How long there must be no typing before the song list may be scrolled.
+        /// </summary>
+        private const int IdleMillisecondsBeforeScrolling = 1500;
         private const uint KEYEVENTF_EXTENDEDKEY = 1;
         private const uint KEYEVENTF_KEYUP = 2;
         private const string MainWindowTitle = "Apple Music";
